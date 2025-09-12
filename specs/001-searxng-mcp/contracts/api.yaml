@@ -1,0 +1,52 @@
+openapi: 3.0.0
+info:
+  title: SearXNG MCP Server
+  version: 0.1.0
+paths:
+  /search:
+    get:
+      summary: Perform a search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The search query.
+        - name: categories
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated list of categories.
+        - name: time_range
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Time range for the search.
+      responses:
+        '200':
+          description: Successful search
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultSet'
+components:
+  schemas:
+    SearchResult:
+      type: object
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+        snippet:
+          type: string
+    ResultSet:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
