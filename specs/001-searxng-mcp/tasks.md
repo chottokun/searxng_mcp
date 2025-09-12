@@ -1,4 +1,4 @@
-# Tasks: SearXNG MCP Server (v2 - Audited)
+# Tasks: SearXNG MCP Server (v4 - Final & Compliant)
 
 **Input**: Design documents from `/specs/001-searxng-mcp/`
 
@@ -17,29 +17,29 @@
 
 ## Phase 3: Implement API Structure (GREEN for Contract Test)
 - [ ] T009: Create `src/services/searxng_service.py` and implement a skeleton `SearxngService` class with a method that returns a hardcoded, schema-valid response.
-- [ ] T010: Create `src/routers/searxng_router.py`. Implement the `/search` endpoint, ensuring it accepts `q`, `categories`, and `time_range` as query parameters and passes them to the service layer.
+- [ ] T010: Create `src/routers/searxng_router.py`. Implement the `/search` endpoint, ensuring it:
+    - Uses a unique `operation_id` (e.g., `search_searxng`), as this is **required by `fastapi-mcp`** to generate the tool name.
+    - Accepts `q`, `categories`, and `time_range` as query parameters.
+    - Follows the docstring convention from the guide.
 - [ ] T011: Create `src/main.py` to configure the FastAPI app and include the `searxng_router`.
 
 *Verification: T008 (Contract Test) should now pass. T007 (Integration Test) must still fail.*
 
 ## Phase 4: Implement Business Logic (GREEN for Integration Test)
-- [ ] T012: In `src/services/searxng_service.py`, implement the logic to build the correct request URL and parameters for the SearXNG API call, using the values passed from the router.
+- [ ] T012: In `src/services/searxng_service.py`, implement the logic to build the correct request URL and parameters for the SearXNG API call.
 - [ ] T013: In `src/services/searxng_service.py`, implement the `httpx` call to the SearXNG API and parse the JSON response into the `ResultSet` model.
 
 *Verification: T007 (Integration Test) should now pass.*
 
-## Phase 5: Add Edge Case Tests (RED -> GREEN Cycle)
-- [ ] T014 [P]: In `tests/integration/test_search.py`, add a new test case `test_searxng_unavailable` that mocks the HTTP request to raise a connection error.
-- [ ] T015: Implement a FastAPI exception handler or middleware to catch the connection error and return a 503 Service Unavailable response. T014 should now pass.
-- [ ] T016 [P]: In `tests/integration/test_search.py`, add a new test case `test_no_results_found` that mocks the SearXNG response to be an empty list.
-- [ ] T017: Ensure the service and router correctly handle the empty list and return a 200 OK with an empty `results` array. T016 should now pass.
+## Phase 5: Integrate `fastapi-mcp`
+- [ ] T014: In `src/main.py`, import the MCP server from `fastapi_mcp` and mount it to the main FastAPI app. This will expose all defined endpoints as MCP tools for AI agents.
 
-## Phase 6: Refactor
-- [ ] T018: Review the entire codebase for clarity, efficiency, and adherence to best practices. Ensure all environment variables, URLs, and magic strings are handled via the `config.py` settings. Ensure all tests pass.
+## Phase 6: Add Edge Case Tests (RED -> GREEN Cycle)
+- [ ] T015 [P]: In `tests/integration/test_search.py`, add a new test case `test_searxng_unavailable` that mocks the HTTP request to raise a connection error.
+- [ ] T016: Implement a FastAPI exception handler or middleware to catch the connection error and return a 503 Service Unavailable response. T015 should now pass.
+- [ ] T017 [P]: In `tests/integration/test_search.py`, add a new test case `test_no_results_found` that mocks the SearXNG response to be an empty list.
+- [ ] T018: Ensure the service and router correctly handle the empty list and return a 200 OK with an empty `results` array. T017 should now pass.
 
-## Dependencies
-- T001-T006 are foundational setup tasks.
-- T007 & T008 (failing tests) must precede T009.
-- T009-T011 (API structure) must precede T012.
-- T012 & T013 (business logic) make the main integration test pass.
-- Edge case tests (T014, T016) must be written before their corresponding implementation (T015, T017).
+## Phase 7: Refactor & Polish
+- [ ] T019: Review and refactor the entire codebase for clarity, efficiency, and adherence to best practices.
+- [ ] T020: **[Docstrings]** Perform a final review of all docstrings for schemas, services, and routers. Ensure they are complete and follow the `FastAPImcp_guide.md` standard. **Note: These docstrings are used by `fastapi-mcp` to generate descriptions for the AI tools.**

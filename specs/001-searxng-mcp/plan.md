@@ -1,10 +1,10 @@
-# Implementation Plan: SearXNG MCP Server
+# Implementation Plan: SearXNG MCP Server (v2 - Aligned)
 
 **Branch**: `001-searxng-mcp` | **Date**: 2025-09-12 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-searxng-mcp/spec.md`
 
 ## Summary
-This plan outlines the implementation of a FastAPI-based MCP server that acts as a proxy to a SearXNG instance. It will expose a simple REST API for searching, allowing users to query SearXNG and receive results in a structured JSON format. The implementation will strictly follow a Test-Driven Development (TDD) approach.
+This plan outlines the implementation of a FastAPI-based MCP server that acts as a proxy to a SearXNG instance. It will expose a simple REST API for searching, allowing users to query SearXNG and receive results in a structured JSON format. The implementation will strictly follow a Test-Driven Development (TDD) approach and correctly utilize the `fastapi-mcp` library to expose endpoints as AI tools.
 
 ## Technical Context
 **Language/Version**: Python 3.11
@@ -79,37 +79,35 @@ Completed. See `research.md` for details on SearXNG parameter selection.
 ## Phase 1: Design & Contracts
 Completed. See `data-model.md`, `contracts/api.yaml`, and `quickstart.md`.
 
-## Phase 2: Task Planning Approach (TDD Compliant)
-*This section describes what the /tasks command will do, following a strict TDD order.*
+## Phase 2: Task Planning Approach (TDD Compliant & Aligned)
+*This section describes what the /tasks command will do, following a strict TDD order and incorporating all project requirements.*
 
 **Ordering Strategy**:
 
-1.  **Foundation (No Tests First)**:
+1.  **Foundation (Project Setup)**:
+    - Task: Set up dependency management (`requirements.txt`) and linting (`ruff`).
     - Task: Create `Dockerfile` and `docker-compose.yml`.
-    - Task: Create Pydantic models in `src/schemas.py`.
-    - Task: Implement configuration module to read `SEARXNG_URL`.
+    - Task: Create Pydantic models (`schemas.py`) and configuration (`config.py`).
 
-2.  **Write Failing Integration Test (RED)**:
-    - Task: In `tests/integration/`, write a test for the primary user story (a successful search). This test will call the endpoint and assert a valid response structure. It MUST fail because no endpoint or logic exists.
+2.  **Write Failing Tests (RED)**:
+    - Task: Write a failing integration test for the primary success scenario.
+    - Task: Write a failing contract test to validate the API schema.
 
-3.  **Write Failing Contract Test (RED)**:
-    - Task: In `tests/contract/`, write a test to validate the `/search` endpoint's request/response schema against `contracts/api.yaml`. This MUST fail as the endpoint does not exist.
+3.  **Implement API Structure (GREEN for Contract Test)**:
+    - Task: Implement the skeleton service, the router (including `operation_id` and query parameters), and the main app file.
 
-4.  **Implement API Structure (GREEN for Contract Test)**:
-    - Task: Implement the router in `src/routers/searxng_router.py`.
-    - Task: Implement a skeleton `SearxngService` that returns a hardcoded, schema-valid response.
-    - Task: Update `src/main.py` to include the router.
-    - *Verification: The Contract Test should now pass. The Integration Test MUST still fail.*
+4.  **Implement Business Logic (GREEN for Integration Test)**:
+    - Task: Implement the actual service logic to call the SearXNG API.
 
-5.  **Implement Business Logic (GREEN for Integration Test)**:
-    - Task: Implement the real logic in `SearxngService` to connect to the SearXNG API and return actual results.
-    - *Verification: The Integration Test should now pass.*
+5.  **Integrate Core Library (`fastapi-mcp`)**:
+    - Task: Mount the `fastapi-mcp` server to the FastAPI application to expose the endpoints as AI tools.
 
 6.  **Add Edge Case Tests (RED -> GREEN)**:
-    - Task: Add integration tests for specific edge cases, such as when SearXNG is unavailable or returns no results. Write the failing test first, then add the necessary error handling in the service to make it pass.
+    - Task: Write failing tests for specific edge cases (e.g., external API unavailable) and then implement the necessary error handling.
 
-7.  **Refactor**:
-    - Task: Review and refactor the implementation for clarity, efficiency, and to remove any hardcoded values, ensuring all tests still pass.
+7.  **Refactor & Polish**:
+    - Task: Review and refactor the codebase for quality and clarity.
+    - Task: Perform a final review of all docstrings to ensure they meet the guide's standards for auto-generated AI tool documentation.
 
 ## Progress Tracking
 
@@ -117,7 +115,7 @@ Completed. See `data-model.md`, `contracts/api.yaml`, and `quickstart.md`.
 - [x] Phase 0: Research complete (/plan command)
 - [x] Phase 1: Design complete (/plan command)
 - [x] Phase 2: Task planning complete (/plan command - describe approach only)
-- [ ] Phase 3: Tasks generated (/tasks command)
+- [x] Phase 3: Tasks generated (/tasks command)
 - [ ] Phase 4: Implementation complete
 - [ ] Phase 5: Validation passed
 
