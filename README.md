@@ -86,7 +86,7 @@ The server will be available at `http://127.0.0.1:8000`.
 
 ## Running Tests
 
-To run the test suite, you first need to install the development dependencies:
+To run the test suite, you need to install the development dependencies. This will also include the main application dependencies from `requirements.txt`.
 
 ```bash
 pip install -r requirements-dev.txt
