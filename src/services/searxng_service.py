@@ -1,3 +1,5 @@
+import os
+import httpx
 from src.schemas import ResultSet, SearchResult
 
 class SearxngUnavailableError(Exception):
@@ -7,51 +9,46 @@ class SearxngUnavailableError(Exception):
 class SearxngService:
     """
     Service layer for interacting with the SearXNG API.
-
-    This service is mocked to return hardcoded data and does not make real HTTP calls.
     """
+
+    def __init__(self):
+        self.base_url = os.getenv("SEARXNG_URL", "http://searxng:8080")
+        self.client = httpx.AsyncClient(base_url=self.base_url)
 
     async def search(self, q: str, categories: str | None, time_range: str | None) -> ResultSet:
         """
-        Performs a mocked search.
-
-        Returns a hardcoded, high-quality ResultSet for testing purposes.
+        Performs a search using the SearXNG API.
         """
+        params = {
+            "q": q,
+            "format": "json",
+        }
+        if categories:
+            params["categories"] = categories
+        if time_range:
+            params["time_range"] = time_range
 
-        mock_results = [
+        try:
+            response = await self.client.get("/search", params=params)
+            response.raise_for_status()
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            raise SearxngUnavailableError(f"SearXNG service is unavailable: {e}")
+
+        data = response.json()
+        results = [
             SearchResult(
-                title="FastAPI - The Python web framework for building APIs",
-                url="https://fastapi.tiangolo.com/",
-                content="FastAPI is a modern, fast (high-performance), web framework for building APIs with Python 3.7+ based on standard Python type hints.",
-                engine="google"
-            ),
-            SearchResult(
-                title="Tutorial - FastAPI",
-                url="https://fastapi.tiangolo.com/tutorial/",
-                content="This tutorial shows you how to use FastAPI with most of its features, step by step. Each section gradually builds on the previous ones.",
-                engine="google"
-            ),
-            SearchResult(
-                title="FastAPI on GitHub",
-                url="https://github.com/tiangolo/fastapi",
-                content="FastAPI framework, high performance, easy to learn, fast to code, ready for production.",
-                engine="github"
+                title=r.get("title"),
+                url=r.get("url"),
+                content=r.get("content") or r.get("snippet"),
+                engine=r.get("engine"),
             )
+            for r in data.get("results", [])
         ]
 
-        # Handle the special case for testing "service unavailable"
-        if q == "unavailable":
-            raise SearxngUnavailableError("Mocked service is unavailable.")
-
-        # Return results only for a specific query
-        if q == "fastapi":
-            return ResultSet(
-                query=q,
-                number_of_results=len(mock_results),
-                results=mock_results
-            )
-
-        # For any other query, return no results
-        return ResultSet(query=q, number_of_results=0, results=[])
+        return ResultSet(
+            query=data.get("query"),
+            number_of_results=len(results),
+            results=results,
+        )
 
 searxng_service = SearxngService()
