@@ -15,7 +15,7 @@ app.include_router(searxng_router.router)
 
 # Create and mount the MCP server, which will automatically discover the included router.
 mcp = FastApiMCP(app)
-mcp.mount_http()
+mcp.mount()
 
 @app.exception_handler(SearxngUnavailableError)
 async def searxng_unavailable_exception_handler(request: Request, exc: SearxngUnavailableError):
