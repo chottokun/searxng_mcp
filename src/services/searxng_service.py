@@ -39,18 +39,19 @@ class SearxngService:
             )
         ]
 
-        # Handle the special case for testing "no results found"
-        if q == "aquerythatyieldsnoresults":
-            return ResultSet(query=q, number_of_results=0, results=[])
-
         # Handle the special case for testing "service unavailable"
         if q == "unavailable":
             raise SearxngUnavailableError("Mocked service is unavailable.")
 
-        return ResultSet(
-            query=q,
-            number_of_results=len(mock_results),
-            results=mock_results
-        )
+        # Return results only for a specific query
+        if q == "fastapi":
+            return ResultSet(
+                query=q,
+                number_of_results=len(mock_results),
+                results=mock_results
+            )
+
+        # For any other query, return no results
+        return ResultSet(query=q, number_of_results=0, results=[])
 
 searxng_service = SearxngService()
