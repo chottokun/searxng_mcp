@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  mcp-searxng:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SEARXNG_URL=http://searxng:8080
+    depends_on:
+      - searxng
+    volumes:
+      - ./src:/app/src
+
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng_config:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - INSTANCE_NAME="mcp-searxng-instance"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE

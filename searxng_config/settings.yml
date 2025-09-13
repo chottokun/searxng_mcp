@@ -1,0 +1,23 @@
+use_default_settings: true
+
+server:
+  base_url: "http://localhost:8080/"
+  secret_key: "a_very_secret_key_that_you_should_change"
+  bind_address: "0.0.0.0"
+  port: 8080
+
+search:
+  formats:
+    - html
+    - json
+
+# Enable a few search engines by default for testing
+engines:
+  - name: "google"
+    engine: "google"
+    shortcut: "go"
+    categories: ["general"]
+  - name: "duckduckgo"
+    engine: "duckduckgo"
+    shortcut: "ddg"
+    categories: ["general"]
