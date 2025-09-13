@@ -64,10 +64,17 @@ The project is configured to run with Docker Compose, which orchestrates both th
 ```bash
 docker compose up --build
 ```
+To run the services in the background, add the `-d` (detached) flag.
 
 The services will be available at:
 -   **MCP Server**: `http://127.0.0.1:8000`
 -   **SearXNG Instance**: `http://127.0.0.1:8080`
+
+You can verify the SearXNG instance by opening `http://127.0.0.1:8080` in your browser. To check the MCP server, use `curl`:
+```bash
+curl -i http://127.0.0.1:8000/mcp
+```
+This should return a `406 Not Acceptable` error with the message `"Client must accept text/event-stream"`, which indicates the MCP server is running correctly.
 
 #### Locally with Uvicorn
 
