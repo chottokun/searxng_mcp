@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from typing import Optional
 from src.schemas import ResultSet
-from src.services.searxng_service import searxng_service
+from src.services.searxng_service import SearxngService, get_searxng_service
 
 router = APIRouter()
 
@@ -15,7 +15,8 @@ router = APIRouter()
 async def search(
     q: str = Query(..., description="The search query string."),
     categories: Optional[str] = Query(None, description="Comma-separated list of search categories (e.g., 'news,files')."),
-    time_range: Optional[str] = Query(None, description="Time range for the search (e.g., 'day', 'week', 'month').")
+    time_range: Optional[str] = Query(None, description="Time range for the search (e.g., 'day', 'week', 'month')."),
+    searxng_service: SearxngService = Depends(get_searxng_service)
 ):
     """
     Performs a search using the configured SearXNG instance.

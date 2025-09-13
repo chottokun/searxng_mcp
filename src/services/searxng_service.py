@@ -51,4 +51,5 @@ class SearxngService:
             results=results,
         )
 
-searxng_service = SearxngService()
+def get_searxng_service() -> SearxngService:
+    return SearxngService()

@@ -1,3 +1,4 @@
 pytest
 openapi-schema-validator
 pyyaml
+pytest-mock

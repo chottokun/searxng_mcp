@@ -40,6 +40,7 @@ This project provides a FastAPI-based server that exposes a search endpoint as a
 
 -   Python 3.11+
 -   `pip` for installing dependencies
+-   Docker and Docker Compose (for the recommended setup)
 
 ### Installation
 
@@ -56,9 +57,25 @@ This project provides a FastAPI-based server that exposes a search endpoint as a
 
 ### Running the Server
 
-To run the web server locally, use `uvicorn`:
+#### With Docker (Recommended)
+
+The project is configured to run with Docker Compose, which orchestrates both the FastAPI server and a SearXNG instance.
 
 ```bash
+docker compose up --build
+```
+
+The services will be available at:
+-   **MCP Server**: `http://127.0.0.1:8000`
+-   **SearXNG Instance**: `http://127.0.0.1:8080`
+
+#### Locally with Uvicorn
+
+You can also run the web server locally using `uvicorn`. However, this requires you to have a separate SearXNG instance running and to configure the `SEARXNG_URL` environment variable accordingly.
+
+```bash
+# Example:
+export SEARXNG_URL=http://localhost:8080
 uvicorn src.main:app --reload
 ```
 
@@ -75,10 +92,10 @@ To run the test suite, you first need to install the development dependencies:
 pip install -r requirements-dev.txt
 ```
 
-Then, run `pytest` from the project root:
+Then, run `pytest` from the project root. Make sure the Docker containers are running and set the `SEARXNG_URL` environment variable:
 
 ```bash
-pytest
+SEARXNG_URL='http://localhost:8080' pytest
 ```
 
 ## API Endpoint
@@ -95,29 +112,21 @@ Performs a search query.
     ```json
     {
       "query": "fastapi",
-      "number_of_results": 3,
+      "number_of_results": 26,
       "results": [
         {
-          "title": "FastAPI - The Python web framework for building APIs",
+          "title": "FastAPI",
           "url": "https://fastapi.tiangolo.com/",
-          "content": "FastAPI is a modern, fast (high-performance), web framework...",
-          "engine": "google"
+          "content": "FastAPI is a modern, fast (high-performance), web framework for building APIs with Python based on standard Python type hints...",
+          "engine": "brave"
         }
       ]
     }
     ```
 -   **Service Unavailable (503 Service Unavailable)**:
-    -   Returned if the (mocked) service is unavailable (triggered by `q=unavailable`).
+    -   Returned if the connection to the SearXNG service fails.
     ```json
     {
-      "detail": "SearXNG service is unavailable."
+      "detail": "SearXNG service is unavailable: <error details>"
     }
     ```
-
-## Development Notes
-
-### Mocked Service Layer
-
-The connection to a live SearXNG instance is currently **mocked**. The `SearxngService` in `src/services/searxng_service.py` does not make any real HTTP calls. Instead, it returns a hardcoded set of search results for demonstration and testing purposes.
-
-This approach was taken to allow for the completion of the API and MCP server structure after development was blocked by persistent environment and Docker-related issues with the live `searxng/searxng` container. To connect this server to a real SearXNG instance, the `search` method in the `SearxngService` class would need to be updated to use an HTTP client like `httpx` to call the actual SearXNG API.
