@@ -2,14 +2,11 @@
 
 This project provides a FastAPI-based server that exposes a search endpoint as a tool compatible with the Model Context Protocol (MCP). It is designed to act as a bridge between an AI agent (like Claude) and a SearXNG instance, allowing the agent to perform web searches.
 
-**Note:** The connection to a live SearXNG instance is currently mocked. The `SearxngService` returns a hardcoded set of search results for demonstration and testing purposes. The work to connect to a live SearXNG instance was blocked by persistent environment and Docker-related issues.
-
 ## Features
 
 -   **FastAPI Backend**: A modern, fast web framework for building APIs.
 -   **MCP Integration**: Exposes the search functionality as an MCP tool using the `fastapi-mcp` library, making it discoverable and usable by AI agents.
 -   **Pydantic Schemas**: Clear, validated data models for API requests and responses.
--   **Mocked Service Layer**: The search service is mocked, allowing for easy testing of the API and MCP layers without a live SearXNG dependency.
 -   **Edge Case Handling**: Includes tests and handlers for common edge cases like "no results found" and "service unavailable".
 -   **Contract and Integration Testing**: A suite of tests to validate the API against its OpenAPI contract and to test its functionality.
 
@@ -116,3 +113,11 @@ Performs a search query.
       "detail": "SearXNG service is unavailable."
     }
     ```
+
+## Development Notes
+
+### Mocked Service Layer
+
+The connection to a live SearXNG instance is currently **mocked**. The `SearxngService` in `src/services/searxng_service.py` does not make any real HTTP calls. Instead, it returns a hardcoded set of search results for demonstration and testing purposes.
+
+This approach was taken to allow for the completion of the API and MCP server structure after development was blocked by persistent environment and Docker-related issues with the live `searxng/searxng` container. To connect this server to a real SearXNG instance, the `search` method in the `SearxngService` class would need to be updated to use an HTTP client like `httpx` to call the actual SearXNG API.
