@@ -1,5 +1,6 @@
 import yaml
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 from openapi_schema_validator import validate
 from jsonschema import RefResolver
@@ -23,22 +24,34 @@ def spec_resolver(openapi_spec):
     """Create a resolver for the OpenAPI spec."""
     return RefResolver.from_schema(openapi_spec)
 
-def test_search_api_contract(client, openapi_spec, spec_resolver):
+def test_search_api_contract(client, openapi_spec, spec_resolver, mocker):
     """
     Validates the /search endpoint response against the OpenAPI contract.
     """
-    # Arrange: Make a request to the endpoint
+    # Arrange: Mock the SearXNG response
+    mock_data = {
+        "query": "test",
+        "results": [
+            {
+                "title": "Test Result",
+                "url": "https://example.com",
+                "content": "This is a test result.",
+                "engine": "google"
+            }
+        ]
+    }
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = mock_data
+    mock_response.raise_for_status.return_value = None
+
+    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
+
+    # Act: Make a request to the endpoint
     response = client.get("/search?q=test")
     assert response.status_code == 200
     response_data = response.json()
 
-    # Act: Get the schema for the response from the OpenAPI spec
+    # Assert: Validate the response against the schema
     response_schema = openapi_spec["paths"]["/search"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
-
-    # Assert: Validate the response against the schema.
-    # The resolver will correctly handle the $ref to #/components/schemas/ResultSet
     validate(instance=response_data, schema=response_schema, resolver=spec_resolver)
-
-    # The previous validation already checks the nested SearchResult objects,
-    # so we don't need to loop and validate them individually anymore.
-    # The resolver handles the entire object graph.

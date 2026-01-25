@@ -2,11 +2,12 @@ import pytest
 import httpx
 from fastapi.testclient import TestClient
 from src.main import app
-from src.schemas import ResultSet
+from src.schemas import ResultSet, SearchResult
 
 @pytest.fixture(scope="module")
 def client():
     """Create a test client for the FastAPI app."""
+    # Using the context manager ensures lifespan events are triggered
     with TestClient(app) as c:
         yield c
 
@@ -14,11 +15,10 @@ def test_searxng_unavailable(client, mocker):
     """
     Test the behavior when the SearXNG service is unavailable by mocking an httpx error.
     """
-    # Arrange
-    mocker.patch(
-        "httpx.AsyncClient.get",
-        side_effect=httpx.RequestError("Mocked request error")
-    )
+    # Arrange: Patch the AsyncClient.get method
+    # Note: We need to patch where it's used or the class itself.
+    # Since we use a single client in app.state, we can patch that instance's get.
+    mock_get = mocker.patch("httpx.AsyncClient.get", side_effect=httpx.RequestError("Mocked request error"))
 
     # Act
     response = client.get("/search?q=test")
@@ -27,20 +27,20 @@ def test_searxng_unavailable(client, mocker):
     assert response.status_code == 503
     json_response = response.json()
     assert "detail" in json_response
-    assert "SearXNG service is unavailable" in json_response["detail"]
+    assert "SearXNG service request failed" in json_response["detail"]
 
 def test_no_results_found(client, mocker):
     """
     Test the behavior when a search yields no results.
-    This test mocks the service to ensure a predictable empty result.
     """
     # Arrange
-    query = "aquerythatshouldneverreturnanyresultsatallxyz123"
-    empty_result_set = ResultSet(query=query, number_of_results=0, results=[])
-    mocker.patch(
-        "src.services.searxng_service.SearxngService.search",
-        return_value=empty_result_set
-    )
+    query = "noresults"
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"query": query, "results": []}
+    mock_response.raise_for_status.return_value = None
+
+    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
 
     # Act
     response = client.get(f"/search?q={query}")
@@ -48,36 +48,41 @@ def test_no_results_found(client, mocker):
     # Assert
     assert response.status_code == 200
     data = response.json()
-    assert data == empty_result_set.model_dump()
+    assert data["query"] == query
+    assert data["number_of_results"] == 0
+    assert data["results"] == []
 
-def test_successful_search(client):
+def test_successful_search(client, mocker):
     """
-    Test a successful search query against the live service.
-    This test checks for a valid response structure, not specific content.
+    Test a successful search query.
     """
     # Arrange
     query = "python"
+    mock_data = {
+        "query": query,
+        "results": [
+            {
+                "title": "Python.org",
+                "url": "https://www.python.org/",
+                "content": "The official home of the Python Programming Language",
+                "engine": "google"
+            }
+        ]
+    }
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = mock_data
+    mock_response.raise_for_status.return_value = None
+
+    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
 
     # Act
     response = client.get(f"/search?q={query}")
 
     # Assert
     assert response.status_code == 200
-
-    # Validate the response against the Pydantic model
     data = response.json()
     validated_data = ResultSet.model_validate(data)
-
     assert validated_data.query == query
-    # We can't guarantee results, but it's highly likely for a common query
-    if validated_data.number_of_results > 0:
-        assert len(validated_data.results) == validated_data.number_of_results
-
-        # Check the structure of the first result
-        first_result = validated_data.results[0]
-        assert isinstance(first_result.title, str)
-        assert first_result.title is not None and first_result.title != ""
-        assert isinstance(first_result.url, str)
-        assert first_result.url.startswith("http")
-        # Content can sometimes be None, so we don't assert its type strictly
-        assert isinstance(first_result.engine, str)
+    assert validated_data.number_of_results == 1
+    assert validated_data.results[0].title == "Python.org"

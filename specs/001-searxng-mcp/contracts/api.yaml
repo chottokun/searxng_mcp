@@ -5,26 +5,27 @@ info:
 paths:
   /search:
     get:
-      summary: Perform a search
+      summary: Perform a search using SearXNG
+      operationId: search_searxng
       parameters:
         - name: q
           in: query
           required: true
           schema:
             type: string
-          description: The search query.
+          description: The search query string.
         - name: categories
           in: query
           required: false
           schema:
             type: string
-          description: Comma-separated list of categories.
+          description: Comma-separated list of search categories (e.g., 'news,files').
         - name: time_range
           in: query
           required: false
           schema:
             type: string
-          description: Time range for the search.
+          description: Time range for the search (e.g., 'day', 'week', 'month').
       responses:
         '200':
           description: Successful search
@@ -32,21 +33,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResultSet'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
 components:
   schemas:
     SearchResult:
       type: object
+      required:
+        - title
+        - url
+        - engine
       properties:
         title:
           type: string
+          description: The title of the search result.
         url:
           type: string
-        snippet:
+          description: The URL of the search result.
+        content:
           type: string
+          description: A snippet of content from the result.
+        engine:
+          type: string
+          description: The search engine that provided the result.
     ResultSet:
       type: object
+      required:
+        - query
+        - results
+        - number_of_results
       properties:
+        query:
+          type: string
+          description: The original query string.
         results:
           type: array
           items:
             $ref: '#/components/schemas/SearchResult'
+        number_of_results:
+          type: integer
+          description: The total number of results returned.

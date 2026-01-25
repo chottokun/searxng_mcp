@@ -7,5 +7,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
     SEARXNG_URL: str = "http://localhost:8080"
+    SEARXNG_TIMEOUT: float = 10.0
 
 settings = Settings()
