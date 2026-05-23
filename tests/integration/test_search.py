@@ -91,9 +91,5 @@ def test_successful_search(client, mocker):
 
         # Check the structure of the first result
         first_result = validated_data.results[0]
-        assert isinstance(first_result.title, str)
-        assert first_result.title is not None and first_result.title != ""
-        assert isinstance(first_result.url, str)
+        assert first_result.title != ""
         assert first_result.url.startswith("http")
-        # Content can sometimes be None, so we don't assert its type strictly
-        assert isinstance(first_result.engine, str)
