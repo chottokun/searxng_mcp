@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 from typing import List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -344,5 +345,6 @@ class PiiService:
 
         return result_set
 
+@lru_cache(maxsize=1)
 def get_pii_service() -> PiiService:
     return PiiService()
