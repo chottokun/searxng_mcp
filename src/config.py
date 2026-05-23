@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     PII_BLOCK_LEVEL: str = "block"
     
     # 検索結果に含まれる個人情報をマスキングしてAIに返却するかどうか
-    PII_MASK_RESPONSE: bool = True
+    PII_MASK_RESPONSE: bool = False
     
     # 検出・ブロック対象とする特定の機密ワードリスト（小文字で定義、部分一致でフィルタリング）
     SENSITIVE_WORDS: list[str] = []

@@ -53,8 +53,9 @@ def test_do_not_redact_invalid_ipv6(pii_service):
     # 5桁以上のヘキサセグメント (無効なIPv6)
     assert pii_service.inspect_query("Connect to 2001:db8888::1") == "Connect to 2001:db8888::1"
 
-def test_mask_results(pii_service):
-    # 検索結果のマスキング検証
+def test_mask_results(pii_service, mocker):
+    # 検索結果のマスキング検証（明示的にTrueに設定）
+    mocker.patch("src.services.pii_service.settings.PII_MASK_RESPONSE", True)
     mock_results = ResultSet(
         query="test",
         number_of_results=1,
