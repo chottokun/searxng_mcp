@@ -1,4 +1,5 @@
 import re
+import functools
 from typing import List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpEngineProvider
@@ -64,16 +65,16 @@ class PiiService:
 
         # 3. カスタム機密ワード (SENSITIVE_WORDS)
         if settings.SENSITIVE_WORDS:
-            sensitive_patterns = []
-            for i, word in enumerate(settings.SENSITIVE_WORDS):
-                # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、エスケープした単語そのものにマッチさせます
-                sensitive_patterns.append(
-                    Pattern(
-                        name=f"sensitive_word_{i}",
-                        regex=re.escape(word),
-                        score=1.0
-                    )
+            # 複数の単語を1つの正規表現パターンに統合して効率化します。
+            # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、エスケープした単語そのものにマッチさせます。
+            combined_pattern = "|".join(re.escape(word) for word in settings.SENSITIVE_WORDS)
+            sensitive_patterns = [
+                Pattern(
+                    name="sensitive_words_combined",
+                    regex=combined_pattern,
+                    score=1.0
                 )
+            ]
             for lang in ["en", "ja"]:
                 sensitive_recognizer = PatternRecognizer(
                     supported_entity="SENSITIVE_WORD",
@@ -344,5 +345,6 @@ class PiiService:
 
         return result_set
 
+@functools.lru_cache()
 def get_pii_service() -> PiiService:
     return PiiService()
