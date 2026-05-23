@@ -70,3 +70,50 @@ def test_mask_results(pii_service):
     masked = pii_service.mask_results(mock_results)
     assert masked.results[0].title == "My IP is [REDACTED_IP]"
     assert masked.results[0].content == "API Key [REDACTED_KEY] works"
+
+def test_inspect_query_disabled(pii_service, mocker):
+    """PII検出が無効な場合にクエリがそのまま返されることをテストします。"""
+    from src.services.pii_service import settings
+    query = "My email is john@example.com"
+
+    # PII_DETECTION_ENABLED が False の場合
+    mocker.patch.object(settings, "PII_DETECTION_ENABLED", False)
+    assert pii_service.inspect_query(query) == query
+
+    # PII_BLOCK_LEVEL が 'off' の場合
+    mocker.patch.object(settings, "PII_DETECTION_ENABLED", True)
+    mocker.patch.object(settings, "PII_BLOCK_LEVEL", "off")
+    assert pii_service.inspect_query(query) == query
+
+def test_mask_results_disabled(pii_service, mocker):
+    """PIIマスキングが無効な場合に結果がそのまま返されることをテストします。"""
+    from src.services.pii_service import settings
+
+    def get_mock_results():
+        return ResultSet(
+            query="test",
+            number_of_results=1,
+            results=[
+                SearchResult(
+                    title="My IP is 192.168.1.1",
+                    url="http://example.com",
+                    content="API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works",
+                    engine="google"
+                )
+            ]
+        )
+
+    # Case 1: PII_DETECTION_ENABLED が False の場合
+    mocker.patch.object(settings, "PII_DETECTION_ENABLED", False)
+    mock_results = get_mock_results()
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My IP is 192.168.1.1"
+    assert masked.results[0].content == "API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works"
+
+    # Case 2: PII_MASK_RESPONSE が False の場合
+    mocker.patch.object(settings, "PII_DETECTION_ENABLED", True)
+    mocker.patch.object(settings, "PII_MASK_RESPONSE", False)
+    mock_results = get_mock_results()
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My IP is 192.168.1.1"
+    assert masked.results[0].content == "API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works"
