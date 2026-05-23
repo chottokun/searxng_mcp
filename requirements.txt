@@ -4,3 +4,6 @@ httpx
 fastapi-mcp
 presidio-analyzer
 presidio-anonymizer
+spacy
+sudachipy
+sudachidict_core

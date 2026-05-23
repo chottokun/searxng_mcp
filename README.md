@@ -21,8 +21,10 @@ Model Context Protocol (MCP) に準拠した検索機能を提供する FastAPI 
 - **FastAPIバックエンド**: 高速かつ非同期対応のモダンなAPIサーバー。
 - **MCP統合**: `fastapi-mcp` を使用して、検索エンドポイントをAIエージェント用のMCPツールとして公開。
 - **データガードレール（情報流出防止機能）**: 
+  - **多言語インテリジェントマージ解析**: 英語（`en_core_web_sm`）と日本語（`ja_core_news_sm`）の両方のspaCy言語モデルおよび認識器を同時に実行・マージする高度な解析を実装。日本語文章内に含まれる英語メールアドレスや、日英混在したクエリでも漏れなく確実に個人情報（PII）を検出します。
   - **クエリフィルタ（入力防御）**: 検索クエリ内に個人情報（メール、電話番号、クレジットカード等）や指定の機密ワードが含まれる場合に、検索処理をブロック（400 Bad Request）またはプレースホルダーに匿名化。
   - **レスポンスフィルタ（出力防御）**: 検索結果（タイトルやコンテンツスニペット）に個人情報が含まれる場合、AIにデータを渡す前に自動マスキング（`[PHONE_NUMBER]` などのプレースホルダーに変換）。
+  - **日本語・マイナンバーの境界バグ修正**: 日本語の文脈に隣接する12桁のマイナンバーも完全に検出できるように正規表現パターンを最適化（`(?<!\d)\d{12}(?!\d)`）。
   - **カスタム検出**: 日本の携帯/固定電話番号フォーマット、12桁のマイナンバー、および指定された `SENSITIVE_WORDS`（機密ワード）の検出に対応。
   - **AI用自律抑止指示**: ツールの詳細説明（Description）に日本語と英語で個人情報送信禁止の警告を明示し、AIモデル自身による自律的な送信防止を促進。
 - **契約・統合テスト**: OpenAPI定義との整合性を担保する契約テスト、およびモックによる外部依存を排除した堅牢な統合テストスイート。
@@ -87,7 +89,12 @@ curl -i http://127.0.0.1:8000/mcp
 pip install -r requirements.txt
 # または
 uv pip install -r requirements.txt
+
+# spaCyモデルおよび日本語形態素解析エンジンのダウンロード
+python -m spacy download en_core_web_sm
+python -m spacy download ja_core_news_sm
 ```
+
 
 環境変数でSearXNGの接続先を指定して起動します：
 ```bash
@@ -136,11 +143,13 @@ This project acts as a bridge allowing AI agents (such as Claude) to perform web
 
 - **FastAPI Backend**: A modern, asynchronous high-performance web framework.
 - **MCP Integration**: Exposes the search endpoint as an MCP-compatible tool using the `fastapi-mcp` library.
-- **Data Guardrails (PII & Sensitive Word Prevention)**:
-  - **Query Filter (Input Guard)**: Scans input search queries. If any PII (names, email addresses, phone numbers, etc.) or configured sensitive words are detected, it either blocks the search (returns a `400 Bad Request`) or anonymizes the entities in the query based on configuration.
-  - **Response Filter (Output Guard)**: Scans search result items (titles and content snippets). If any PII is found, it automatically masks them (e.g., replaces them with `[EMAIL_ADDRESS]`) before returning data to the AI agent.
-  - **Custom Recognizers**: Out-of-the-box support for Japanese mobile/landline phone number formats, 12-digit Japanese My Number IDs, and custom `SENSITIVE_WORDS` matching.
-  - **Self-Discipline Prompting**: Explicit warnings (Japanese/English) are embedded in the tool descriptions to proactively guide the LLM to avoid entering sensitive data.
+  - **Data Guardrails (PII & Sensitive Word Prevention)**:
+    - **Multilingual Intelligent Merging**: Concurrently runs and merges results from both English (`en_core_web_sm`) and Japanese (`ja_core_news_sm`) spaCy models and custom recognizers. It captures PII like English emails written within Japanese sentences or mixed English/Japanese (code-switching) queries seamlessly without any loss.
+    - **Query Filter (Input Guard)**: Scans input search queries. If any PII (names, email addresses, phone numbers, etc.) or configured sensitive words are detected, it either blocks the search (returns a `400 Bad Request`) or anonymizes the entities in the query based on configuration.
+    - **Response Filter (Output Guard)**: Scans search result items (titles and content snippets) and automatically masks them before returning data to the AI agent.
+    - **Optimized for Japanese Contexts**: Fixed single-word-boundary bugs for Japanese text structures, ensuring 12-digit Japanese My Number IDs are successfully detected even when adjacent to Japanese characters (`(?<!\d)\d{12}(?!\d)`).
+    - **Custom Recognizers**: Out-of-the-box support for Japanese mobile/landline phone number formats, 12-digit Japanese My Number IDs, and custom `SENSITIVE_WORDS` matching.
+    - **Self-Discipline Prompting**: Explicit warnings (Japanese/English) are embedded in the tool descriptions to proactively guide the LLM to avoid entering sensitive data.
 - **Contract & Integration Tests**: OpenAPI validation tests and comprehensive mocked integration tests.
 
 ### Getting Started
@@ -167,6 +176,12 @@ It should return a `406 Not Acceptable` (`"Client must accept text/event-stream"
 Install dependencies:
 ```bash
 pip install -r requirements.txt
+# Or
+uv pip install -r requirements.txt
+
+# Download spaCy models
+python -m spacy download en_core_web_sm
+python -m spacy download ja_core_news_sm
 ```
 
 Configure settings and run the application using `uvicorn`:

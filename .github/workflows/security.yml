@@ -1,0 +1,59 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * 1' # 毎週月曜日に自動実行
+
+permissions:
+  contents: read
+  security-events: write # GitHub Code Scanning に結果をアップロードするために必要
+  actions: read
+
+jobs:
+  trivy:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリのチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Trivy によるファイルシステム・依存関係スキャン
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy スキャン結果のアップロード
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  bandit:
+    name: Bandit Python SAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリのチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Pythonのセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Bandit のインストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
+
+      - name: Bandit による静的セキュリティスキャン
+        # -r: 再帰的スキャン, -ll: 警告レベル中以上のみ検知
+        run: |
+          bandit -r src/ -ll
