@@ -82,6 +82,18 @@ curl -i http://127.0.0.1:8000/mcp
 ```
 `406 Not Acceptable`（`"Client must accept text/event-stream"`）が返ってくれば、正常に稼働しています。
 
+> **セキュリティに関する重要事項:**
+> SearXNGが正常かつ安全に動作するためには、セキュアな `SEARXNG_SECRET` 環境変数を設定する必要があります。
+> 以下のコマンドでランダムな値を生成し、環境変数に設定、または `.env` ファイルに記述してください。
+> ```bash
+> openssl rand -hex 32
+> ```
+> 生成した値を設定して起動します：
+> ```bash
+> export SEARXNG_SECRET=your_generated_secret_here
+> docker compose up --build
+> ```
+
 #### 2. ローカルで直接起動する場合
 
 依存関係のインストール：
@@ -114,7 +126,7 @@ uvicorn src.main:app --reload
 | `PII_DETECTION_ENABLED` | bool | `True` | 個人情報および機密ワードの検出処理自体を有効にするか。 |
 | `PII_BLOCK_LEVEL` | str | `"block"` | PII検出時の動作。`block`（検索拒否・エラー返却）、`anonymize`（匿名化して検索続行）、`off`（無効）。 |
 | `PII_MASK_RESPONSE` | bool | `True` | 検索結果（タイトル、コンテンツ）内の個人情報をAIに返す前にマスキングするか。 |
-| `SENSITIVE_WORDS` | list | `["confidential", "secret", "社外秘"]` | 検出時に無条件で検索をブロックする機密ワードのリスト（カンマ区切りで環境変数に指定可能）。 |
+| `SENSITIVE_WORDS` | list | `[]` | 検出時に無条件で検索をブロックする機密ワードのリスト（カンマ区切りで環境変数に指定可能）。 |
 | `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | 検出対象とするPIIカテゴリの指定。 |
 
 ### テストの実行方法
@@ -171,6 +183,18 @@ curl -i http://127.0.0.1:8000/mcp
 ```
 It should return a `406 Not Acceptable` (`"Client must accept text/event-stream"`), indicating that the server is up and listening.
 
+> **Important Security Note:**
+> You must set a secure `SEARXNG_SECRET` environment variable for SearXNG to function properly and securely.
+> You can generate one using:
+> ```bash
+> openssl rand -hex 32
+> ```
+> Then, add it to your `.env` file or export it:
+> ```bash
+> export SEARXNG_SECRET=your_generated_secret_here
+> docker compose up --build
+> ```
+
 #### 2. Running Locally
 
 Install dependencies:
@@ -202,7 +226,7 @@ You can customize the security behaviors using environment variables or a `.env`
 | `PII_DETECTION_ENABLED` | bool | `True` | Enable or disable the entire PII scanning process. |
 | `PII_BLOCK_LEVEL` | str | `"block"` | Reaction when PII is detected in a query. Options: `block` (reject search & return 400), `anonymize` (replace with tags and proceed), `off` (do nothing). |
 | `PII_MASK_RESPONSE` | bool | `True` | Mask PII found in the search results before returning them to the agent. |
-| `SENSITIVE_WORDS` | list | `["confidential", "secret", "社外秘"]` | A list of sensitive words (comma-separated). Queries containing these will always be blocked. |
+| `SENSITIVE_WORDS` | list | `[]` | A list of sensitive words (comma-separated). Queries containing these will always be blocked. |
 | `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | A list of PII categories to recognize. |
 
 ### Running Tests

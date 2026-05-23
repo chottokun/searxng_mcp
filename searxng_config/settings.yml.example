@@ -2,7 +2,9 @@ use_default_settings: true
 
 server:
   base_url: "http://localhost:8080/"
-  secret_key: "a_very_secret_key_that_you_should_change"
+  # secret_keyは暗号化処理に使用されます。
+  # セキュリティのため、環境変数 SEARXNG_SECRET 経由で設定することを推奨します。
+  secret_key: ""
   bind_address: "0.0.0.0"
   port: 8080
 

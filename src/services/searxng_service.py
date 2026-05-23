@@ -14,13 +14,10 @@ class SearxngService:
     SearXNG APIと連携するためのサービスレイヤー。
     """
 
-    def __init__(self):
+    def __init__(self, client: httpx.AsyncClient):
         # settings.SEARXNG_URLを一元的に使用
         self.base_url = settings.SEARXNG_URL
-        self.client = httpx.AsyncClient(
-            base_url=self.base_url,
-            timeout=settings.SEARXNG_TIMEOUT
-        )
+        self.client = client
 
     async def search(self, q: str, categories: str | None, time_range: str | None) -> ResultSet:
         """
@@ -59,5 +56,10 @@ class SearxngService:
             results=results,
         )
 
-def get_searxng_service() -> SearxngService:
-    return SearxngService()
+from fastapi import Request
+
+def get_searxng_service(request: Request) -> SearxngService:
+    """
+    共有クライアントを使用して SearxngService を取得する依存関係。
+    """
+    return SearxngService(client=request.app.state.httpx_client)

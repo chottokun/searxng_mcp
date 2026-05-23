@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     PII_MASK_RESPONSE: bool = True
     
     # 検出・ブロック対象とする特定の機密ワードリスト（小文字で定義、部分一致でフィルタリング）
-    SENSITIVE_WORDS: list[str] = ["confidential", "secret", "社外秘"]
+    SENSITIVE_WORDS: list[str] = []
     
     # Presidioで検出対象とするPIIエンティティのリスト
     PII_ENTITIES: list[str] = [
@@ -31,5 +31,8 @@ class Settings(BaseSettings):
         "CREDIT_CARD",
         "LOCATION"
     ]
+
+    # CORS 設定
+    ALLOW_ORIGINS: list[str] = ["*"]
 
 settings = Settings()
