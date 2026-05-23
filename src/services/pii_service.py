@@ -1,5 +1,4 @@
 import re
-from typing import List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -82,7 +81,7 @@ class PiiService:
                 )
                 self.analyzer.registry.add_recognizer(sensitive_recognizer)
 
-    def _analyze_multilingual(self, text: str, entities: List[str]) -> list:
+    def _analyze_multilingual(self, text: str, entities: list[str]) -> list:
         """
         英語（en）と日本語（ja）の両方のNLPモデル・認識器で解析を行い、結果を統合します。
         スパン（位置）が重複する場合、より高スコアまたは詳細なエンティティを優先してマージします。
