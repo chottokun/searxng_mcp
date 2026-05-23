@@ -7,6 +7,7 @@ from src.schemas import ResultSet
 @pytest.fixture(scope="module")
 def client():
     """Create a test client for the FastAPI app."""
+    # The TestClient will trigger the lifespan events
     with TestClient(app) as c:
         yield c
 
@@ -15,8 +16,10 @@ def test_searxng_unavailable(client, mocker):
     Test the behavior when the SearXNG service is unavailable by mocking an httpx error.
     """
     # Arrange
-    mocker.patch(
-        "httpx.AsyncClient.get",
+    # Mocking the client attached to app.state
+    mocker.patch.object(
+        app.state.client,
+        "get",
         side_effect=httpx.RequestError("Mocked request error")
     )
 
@@ -32,14 +35,20 @@ def test_searxng_unavailable(client, mocker):
 def test_no_results_found(client, mocker):
     """
     Test the behavior when a search yields no results.
-    This test mocks the service to ensure a predictable empty result.
     """
     # Arrange
     query = "aquerythatshouldneverreturnanyresultsatallxyz123"
-    empty_result_set = ResultSet(query=query, number_of_results=0, results=[])
-    mocker.patch(
-        "src.services.searxng_service.SearxngService.search",
-        return_value=empty_result_set
+    empty_response = {"query": query, "results": []}
+
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = empty_response
+    mock_response.raise_for_status.return_value = None
+
+    mocker.patch.object(
+        app.state.client,
+        "get",
+        return_value=mock_response
     )
 
     # Act
@@ -48,15 +57,36 @@ def test_no_results_found(client, mocker):
     # Assert
     assert response.status_code == 200
     data = response.json()
-    assert data == empty_result_set.model_dump()
+    assert data["query"] == query
+    assert data["number_of_results"] == 0
 
-def test_successful_search(client):
+def test_pii_redaction_integration(client, mocker):
     """
-    Test a successful search query against the live service.
-    This test checks for a valid response structure, not specific content.
+    Test that PII in the search query is redacted before being sent to SearXNG.
     """
     # Arrange
-    query = "python"
+    query = "Find info about test@example.com"
+    expected_sanitized_query = "Find info about [REDACTED_EMAIL]"
+
+    # Mock response from SearXNG
+    mock_response_data = {
+        "query": expected_sanitized_query,
+        "results": [
+            {"title": "Result", "url": "http://example.com", "content": "Some content", "engine": "google"}
+        ]
+    }
+
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = mock_response_data
+    mock_response.raise_for_status.return_value = None
+
+    # Patch the client.get to capture the parameters sent to SearXNG
+    mock_get = mocker.patch.object(
+        app.state.client,
+        "get",
+        return_value=mock_response
+    )
 
     # Act
     response = client.get(f"/search?q={query}")
@@ -64,20 +94,10 @@ def test_successful_search(client):
     # Assert
     assert response.status_code == 200
 
-    # Validate the response against the Pydantic model
+    # Verify that the query sent to SearXNG was sanitized
+    args, kwargs = mock_get.call_args
+    assert kwargs["params"]["q"] == expected_sanitized_query
+
+    # Verify the response contains the sanitized query
     data = response.json()
-    validated_data = ResultSet.model_validate(data)
-
-    assert validated_data.query == query
-    # We can't guarantee results, but it's highly likely for a common query
-    if validated_data.number_of_results > 0:
-        assert len(validated_data.results) == validated_data.number_of_results
-
-        # Check the structure of the first result
-        first_result = validated_data.results[0]
-        assert isinstance(first_result.title, str)
-        assert first_result.title is not None and first_result.title != ""
-        assert isinstance(first_result.url, str)
-        assert first_result.url.startswith("http")
-        # Content can sometimes be None, so we don't assert its type strictly
-        assert isinstance(first_result.engine, str)
+    assert data["query"] == expected_sanitized_query

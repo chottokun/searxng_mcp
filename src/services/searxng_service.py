@@ -1,6 +1,7 @@
-import os
 import httpx
 from src.schemas import ResultSet, SearchResult
+from src.config import settings
+from src.services.privacy_service import PrivacyService, get_privacy_service
 
 class SearxngUnavailableError(Exception):
     """Custom exception for when the SearXNG service is unavailable."""
@@ -11,16 +12,19 @@ class SearxngService:
     Service layer for interacting with the SearXNG API.
     """
 
-    def __init__(self):
-        self.base_url = os.getenv("SEARXNG_URL", "http://searxng:8080")
-        self.client = httpx.AsyncClient(base_url=self.base_url)
+    def __init__(self, client: httpx.AsyncClient, privacy_service: PrivacyService):
+        self.client = client
+        self.privacy_service = privacy_service
 
     async def search(self, q: str, categories: str | None, time_range: str | None) -> ResultSet:
         """
-        Performs a search using the SearXNG API.
+        Performs a search using the SearXNG API after redacting PII from the query.
         """
+        # Redact PII from the query before sending it to SearXNG
+        sanitized_q = self.privacy_service.redact_query(q)
+
         params = {
-            "q": q,
+            "q": sanitized_q,
             "format": "json",
         }
         if categories:
@@ -46,10 +50,15 @@ class SearxngService:
         ]
 
         return ResultSet(
-            query=data.get("query"),
+            query=sanitized_q,
             number_of_results=len(results),
             results=results,
         )
 
-def get_searxng_service() -> SearxngService:
-    return SearxngService()
+def get_searxng_service(
+    client: httpx.AsyncClient,
+    privacy_service: PrivacyService = get_privacy_service()
+) -> SearxngService:
+    # In a real FastAPI app, the client would be retrieved from app.state
+    # This factory function will be used by the router
+    return SearxngService(client=client, privacy_service=privacy_service)
