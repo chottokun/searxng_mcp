@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import List, Optional
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -12,7 +12,20 @@ class PiiService:
     日本語（ja_core_news_sm）および英語（en_core_web_sm）のspaCyモデルを組み合わせ、
     日・英両言語の混在クエリでも高い精度で検出を行います。
     """
+
+    # Class-level cache for the instance
+    _instance: Optional['PiiService'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(PiiService, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if getattr(self, '_initialized', False):
+            return
+
         # 多言語（英語・日本語）に対応したNLPエンジンの設定
         nlp_config = {
             "nlp_engine_name": "spacy",
@@ -27,6 +40,7 @@ class PiiService:
         self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self.anonymizer = AnonymizerEngine()
         self._register_custom_recognizers()
+        self._initialized = True
 
     def _register_custom_recognizers(self):
         """
@@ -345,4 +359,7 @@ class PiiService:
         return result_set
 
 def get_pii_service() -> PiiService:
+    """
+    Dependency to retrieve the cached PiiService instance.
+    """
     return PiiService()
