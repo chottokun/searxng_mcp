@@ -70,3 +70,57 @@ def test_mask_results(pii_service):
     masked = pii_service.mask_results(mock_results)
     assert masked.results[0].title == "My IP is [REDACTED_IP]"
     assert masked.results[0].content == "API Key [REDACTED_KEY] works"
+
+def test_inspect_query_disabled(pii_service, mocker):
+    """PII検出が無効な場合、クエリが変更されないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    query = "Contact john.doe@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_inspect_query_off_level(pii_service, mocker):
+    """PIIブロックレベルが'off'の場合、クエリが変更されないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", True)
+    mocker.patch("src.services.pii_service.settings.PII_BLOCK_LEVEL", "off")
+    query = "Contact john.doe@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_mask_results_disabled(pii_service, mocker):
+    """PII検出が無効な場合、検索結果がマスキングされないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My email is john.doe@example.com",
+                url="http://example.com",
+                content="Call me at 090-1234-5678",
+                engine="google"
+            )
+        ]
+    )
+
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My email is john.doe@example.com"
+    assert masked.results[0].content == "Call me at 090-1234-5678"
+
+def test_mask_results_off_masking(pii_service, mocker):
+    """レスポンスのマスキングが設定でオフの場合、検索結果がマスキングされないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", True)
+    mocker.patch("src.services.pii_service.settings.PII_MASK_RESPONSE", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My email is john.doe@example.com",
+                url="http://example.com",
+                content="Call me at 090-1234-5678",
+                engine="google"
+            )
+        ]
+    )
+
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My email is john.doe@example.com"
+    assert masked.results[0].content == "Call me at 090-1234-5678"
