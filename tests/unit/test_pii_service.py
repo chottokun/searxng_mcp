@@ -70,3 +70,49 @@ def test_mask_results(pii_service):
     masked = pii_service.mask_results(mock_results)
     assert masked.results[0].title == "My IP is [REDACTED_IP]"
     assert masked.results[0].content == "API Key [REDACTED_KEY] works"
+
+def test_inspect_query_pii_detection_disabled(pii_service, mocker):
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    query = "My email is test@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_inspect_query_pii_block_level_off(pii_service, mocker):
+    mocker.patch("src.services.pii_service.settings.PII_BLOCK_LEVEL", "off")
+    query = "My email is test@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_mask_results_pii_detection_disabled(pii_service, mocker):
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My IP is 192.168.1.1",
+                url="http://example.com",
+                content="API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works",
+                engine="google"
+            )
+        ]
+    )
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My IP is 192.168.1.1"
+    assert masked.results[0].content == "API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works"
+
+def test_mask_results_pii_mask_response_disabled(pii_service, mocker):
+    mocker.patch("src.services.pii_service.settings.PII_MASK_RESPONSE", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My IP is 192.168.1.1",
+                url="http://example.com",
+                content="API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works",
+                engine="google"
+            )
+        ]
+    )
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My IP is 192.168.1.1"
+    assert masked.results[0].content == "API Key sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM works"
