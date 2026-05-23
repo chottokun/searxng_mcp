@@ -219,3 +219,6 @@ __marimo__/
 .specify/
 .gemini/
 
+# Local SearXNG configuration (Ignore local changes)
+searxng_config/settings.yml
+
