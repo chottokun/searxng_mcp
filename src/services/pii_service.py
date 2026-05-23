@@ -1,6 +1,7 @@
 import re
 from typing import List
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from src.config import settings
 from src.schemas import ResultSet
@@ -8,9 +9,22 @@ from src.schemas import ResultSet
 class PiiService:
     """
     個人情報（PII）および機密ワードの検出・匿名化を行うサービス。
+    日本語（ja_core_news_sm）および英語（en_core_web_sm）のspaCyモデルを組み合わせ、
+    日・英両言語の混在クエリでも高い精度で検出を行います。
     """
     def __init__(self):
-        self.analyzer = AnalyzerEngine()
+        # 多言語（英語・日本語）に対応したNLPエンジンの設定
+        nlp_config = {
+            "nlp_engine_name": "spacy",
+            "models": [
+                {"lang_code": "en", "model_name": "en_core_web_sm"},
+                {"lang_code": "ja", "model_name": "ja_core_news_sm"}
+            ]
+        }
+        provider = NlpEngineProvider(nlp_configuration=nlp_config)
+        nlp_engine = provider.create_engine()
+        
+        self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self.anonymizer = AnonymizerEngine()
         self._register_custom_recognizers()
 
@@ -25,25 +39,28 @@ class PiiService:
             regex=r"0\d{1,4}-\d{1,4}-\d{4}|0\d{9,10}",
             score=0.9
         )
-        jp_phone_recognizer = PatternRecognizer(
-            supported_entity="PHONE_NUMBER",
-            patterns=[jp_phone_pattern],
-            supported_language="en"  # デフォルトの英語アナライザー上で動作させるため en に設定
-        )
-        self.analyzer.registry.add_recognizer(jp_phone_recognizer)
+        for lang in ["en", "ja"]:
+            jp_phone_recognizer = PatternRecognizer(
+                supported_entity="PHONE_NUMBER",
+                patterns=[jp_phone_pattern],
+                supported_language=lang
+            )
+            self.analyzer.registry.add_recognizer(jp_phone_recognizer)
 
         # 2. マイナンバー (12桁の数字)
+        # 日本語テキスト内でも単語境界に依存せず正しくマッチするよう、(?<!\d)...(?!\d) を使用します
         my_number_pattern = Pattern(
             name="my_number_pattern",
-            regex=r"\b\d{12}\b",
+            regex=r"(?<!\d)\d{12}(?!\d)",
             score=0.95
         )
-        my_number_recognizer = PatternRecognizer(
-            supported_entity="MY_NUMBER",
-            patterns=[my_number_pattern],
-            supported_language="en"
-        )
-        self.analyzer.registry.add_recognizer(my_number_recognizer)
+        for lang in ["en", "ja"]:
+            my_number_recognizer = PatternRecognizer(
+                supported_entity="MY_NUMBER",
+                patterns=[my_number_pattern],
+                supported_language=lang
+            )
+            self.analyzer.registry.add_recognizer(my_number_recognizer)
 
         # 3. カスタム機密ワード (SENSITIVE_WORDS)
         if settings.SENSITIVE_WORDS:
@@ -57,12 +74,50 @@ class PiiService:
                         score=1.0
                     )
                 )
-            sensitive_recognizer = PatternRecognizer(
-                supported_entity="SENSITIVE_WORD",
-                patterns=sensitive_patterns,
-                supported_language="en"
-            )
-            self.analyzer.registry.add_recognizer(sensitive_recognizer)
+            for lang in ["en", "ja"]:
+                sensitive_recognizer = PatternRecognizer(
+                    supported_entity="SENSITIVE_WORD",
+                    patterns=sensitive_patterns,
+                    supported_language=lang
+                )
+                self.analyzer.registry.add_recognizer(sensitive_recognizer)
+
+    def _analyze_multilingual(self, text: str, entities: List[str]) -> list:
+        """
+        英語（en）と日本語（ja）の両方のNLPモデル・認識器で解析を行い、結果を統合します。
+        スパン（位置）が重複する場合、より高スコアまたは詳細なエンティティを優先してマージします。
+        """
+        if not text:
+            return []
+
+        results_en = self.analyzer.analyze(
+            text=text,
+            language="en",
+            entities=entities
+        )
+        results_ja = self.analyzer.analyze(
+            text=text,
+            language="ja",
+            entities=entities
+        )
+
+        merged = list(results_en)
+
+        for res_ja in results_ja:
+            overlap = False
+            for res_en in merged:
+                # 完全に重なっているか、一部重複している場合
+                if not (res_ja.end <= res_en.start or res_ja.start >= res_en.end):
+                    overlap = True
+                    # スコアが高い方を優先する。同スコアの場合は詳細な日本語NERモデルを優先
+                    if res_ja.score >= res_en.score:
+                        merged.remove(res_en)
+                        merged.append(res_ja)
+                    break
+            if not overlap:
+                merged.append(res_ja)
+
+        return merged
 
     def inspect_query(self, q: str) -> str:
         """
@@ -83,11 +138,8 @@ class PiiService:
         # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
         entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
 
-        results = self.analyzer.analyze(
-            text=q,
-            language="en",
-            entities=entities
-        )
+        # 日・英の両言語モデルで重複なく解析
+        results = self._analyze_multilingual(q, entities)
 
         if not results:
             return q
@@ -131,11 +183,7 @@ class PiiService:
         for item in result_set.results:
             # タイトルのマスキング
             if item.title:
-                title_results = self.analyzer.analyze(
-                    text=item.title,
-                    language="en",
-                    entities=entities
-                )
+                title_results = self._analyze_multilingual(item.title, entities)
                 if title_results:
                     item.title = self.anonymizer.anonymize(
                         text=item.title,
@@ -144,11 +192,7 @@ class PiiService:
 
             # コンテンツ（スニペット）のマスキング
             if item.content:
-                content_results = self.analyzer.analyze(
-                    text=item.content,
-                    language="en",
-                    entities=entities
-                )
+                content_results = self._analyze_multilingual(item.content, entities)
                 if content_results:
                     item.content = self.anonymizer.anonymize(
                         text=item.content,

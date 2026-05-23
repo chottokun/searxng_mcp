@@ -19,6 +19,7 @@ services:
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080/
       - INSTANCE_NAME="mcp-searxng-instance"
+      - SEARXNG_VALKEY_URL=valkey://valkey:6379/0
     cap_drop:
       - ALL
     cap_add:
@@ -26,3 +27,11 @@ services:
       - SETGID
       - SETUID
       - DAC_OVERRIDE
+    depends_on:
+      - valkey
+
+  valkey:
+    image: docker.io/valkey/valkey:8-alpine
+    command: valkey-server --save "" --appendonly no
+
+
