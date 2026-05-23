@@ -117,6 +117,50 @@ uvicorn src.main:app --reload
 - **APIドキュメント（Swagger UI）**: `http://127.0.0.1:8000/docs`
 - **MCPエンドポイント**: `http://127.0.0.1:8000/mcp`
 
+### MCPクライアント（Claude Desktop）への登録方法
+
+AIエージェントのクライアントでこのSearXNG MCPツールを利用するには、設定ファイル（通常は `~/.config/Claude/claude_desktop_config.json`）に以下のいずれかの設定を追記します。
+
+#### A. Stdioトランスポート（推奨・直接起動）
+クライアントがMCPサーバーのコマンドを自動的に立ち上げて標準入出力でやり取りする最も一般的な設定です。
+* **uv (Pythonパッケージマネージャ) を使用して直接実行する場合:**
+  ```json
+  {
+    "mcpServers": {
+      "searxng-mcp": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--package",
+          "fastapi-mcp",
+          "mcp",
+          "run",
+          "/absolute/path/to/project/searxng_mcp/src/main.py"
+        ],
+        "env": {
+          "SEARXNG_URL": "http://localhost:8080",
+          "PII_BLOCK_LEVEL": "block",
+          "PII_MASK_RESPONSE": "false"
+        }
+      }
+    }
+  }
+  ```
+  *(注: `/absolute/path/to/project/` の部分は、プロジェクトをクローンした実際のローカル絶対パスに置き換えてください。)*
+
+#### B. SSE (HTTP) トランスポート（バックグラウンド起動したサーバーに接続）
+本サーバーをバックグラウンド（ポート8000）で起動しておき、クライアントがHTTP SSE経由でネットワーク接続する設定です。
+```json
+{
+  "mcpServers": {
+    "searxng-mcp-sse": {
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
+
 ### 個人情報保護（PII）設定一覧
 
 `.env` ファイルまたは環境変数経由で以下の設定をカスタマイズ可能です。
@@ -408,6 +452,50 @@ uvicorn src.main:app --reload
 
 - **API Documentation**: `http://127.0.0.1:8000/docs`
 - **MCP Endpoint**: `http://127.0.0.1:8000/mcp`
+
+### MCP Client Integration (e.g. Claude Desktop)
+
+To register and use this SearXNG MCP tool in your AI agent workspace, append the following configurations to your client config file (usually located at `~/.config/Claude/claude_desktop_config.json`).
+
+#### A. Stdio Transport (Recommended - Auto Startup)
+The client spawns the MCP process directly and communicates via standard input/output.
+* **Using uv (Python package runner) to start the server:**
+  ```json
+  {
+    "mcpServers": {
+      "searxng-mcp": {
+        "command": "uv",
+        "args": [
+          "run",
+          "--package",
+          "fastapi-mcp",
+          "mcp",
+          "run",
+          "/absolute/path/to/project/searxng_mcp/src/main.py"
+        ],
+        "env": {
+          "SEARXNG_URL": "http://localhost:8080",
+          "PII_BLOCK_LEVEL": "block",
+          "PII_MASK_RESPONSE": "false"
+        }
+      }
+    }
+  }
+  ```
+  *(Note: Replace `/absolute/path/to/project/` with the actual absolute path to where you cloned the project on your machine.)*
+
+#### B. SSE (HTTP) Transport (Connects to a Running Server)
+Connects to the server running in the background (e.g., listening on port 8000) over network HTTP Server-Sent Events.
+```json
+{
+  "mcpServers": {
+    "searxng-mcp-sse": {
+      "url": "http://localhost:8000/mcp"
+    }
+  }
+}
+```
+
 
 ### Guardrail Configuration Settings
 
