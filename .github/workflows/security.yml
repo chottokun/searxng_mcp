@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: リポジトリのチェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Trivy によるファイルシステム・依存関係スキャン
         uses: aquasecurity/trivy-action@master
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: リポジトリのチェックアウト
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Pythonのセットアップ
         uses: actions/setup-python@v6
