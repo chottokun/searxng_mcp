@@ -2,7 +2,9 @@ use_default_settings: true
 
 server:
   base_url: "http://localhost:8080/"
-  secret_key: "a_very_secret_key_that_you_should_change"
+  # The secret_key is used for cryptography purpose.
+  # It should be set via the SEARXNG_SECRET environment variable for security.
+  secret_key: ""
   bind_address: "0.0.0.0"
   port: 8080
 

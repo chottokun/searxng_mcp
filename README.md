@@ -171,6 +171,15 @@ curl -i http://127.0.0.1:8000/mcp
 ```
 It should return a `406 Not Acceptable` (`"Client must accept text/event-stream"`), indicating that the server is up and listening.
 
+> **Important Security Note:** You must set a secure `SEARXNG_SECRET` environment variable for SearXNG to function properly and securely. You can generate one using:
+> ```bash
+> openssl rand -hex 32
+> ```
+> Then, add it to your `.env` file or export it:
+> ```bash
+> export SEARXNG_SECRET=your_generated_secret_here
+> ```
+
 #### 2. Running Locally
 
 Install dependencies:
