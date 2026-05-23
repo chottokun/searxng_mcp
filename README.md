@@ -145,6 +145,68 @@ pytest -v
 uv run pytest -v
 ```
 
+### 実際の検証・テスト結果（事例）
+
+`docker compose` を用いて実際に SearXNG および MCP サーバーをローカルで起動し、接続テストを行った際の実機結果です。
+
+#### 1. ヘルスチェックの確認 (`/`)
+FastAPI サーバーが正常に起動し、SearXNG サービスと連携可能な状態であることを確認します。
+```bash
+curl -s http://127.0.0.1:8000/ | python3 -m json.tool
+```
+**出力結果:**
+```json
+{
+    "status": "ok"
+}
+```
+
+#### 2. 個人情報（PII）を含まない通常の検索 (`/search?q=python`)
+検索キーワードに個人情報を含まない通常リクエストの例です。検索結果のコンテンツ内に含まれる個人情報（人名や地名など）が、AIエージェントに渡される前に自動的に匿名化・マスキングされているのが分かります。
+```bash
+curl -s "http://127.0.0.1:8000/search?q=python"
+```
+**出力結果 (抜粋):**
+```json
+{
+  "query": "python",
+  "results": [
+    {
+      "title": "Welcome to Python.org",
+      "url": "https://www.python.org/",
+      "content": "Python allows mandatory and optional arguments...",
+      "engine": "google"
+    },
+    {
+      "title": "Python",
+      "url": "https://en.wikipedia.org/wiki/Python",
+      "content": "<PERSON>",  // ← 人名が自動的に匿名化されています
+      "engine": "wikipedia"
+    },
+    {
+      "title": "Online Python - IDE, Editor...",
+      "url": "https://www.online-python.com/",
+      "content": "...development environment (<PERSON>). It is <LOCATION>, dependable...", // ← 人名や地名が自動的にマスキングされています
+      "engine": "duckduckgo"
+    }
+  ],
+  "number_of_results": 20
+}
+```
+
+#### 3. クエリ入力における個人情報の送信ブロック (`/search?q=my email is test@example.com`)
+ユーザーやAIエージェントが、クエリ入力として誤ってメールアドレスなどの機密個人情報を送信してしまった場合のブロック動作例です。SearXNG にリクエストが送信される前に、サーバー側で安全に遮断されます。
+```bash
+curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
+```
+**出力結果 (400 Bad Request):**
+```json
+{
+  "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
+}
+```
+
+
 ---
 
 ## English Version
@@ -237,3 +299,65 @@ Tests are designed with mocks and can be executed offline without a live SearXNG
 pip install -r requirements-dev.txt
 pytest -v
 ```
+
+### Live Verification & Test Results (Examples)
+
+These are actual curl command outputs demonstrating the guardrails in action with `docker compose`.
+
+#### 1. Health Check (`/`)
+Verify that the FastAPI server is running correctly and integrated.
+```bash
+curl -s http://127.0.0.1:8000/ | python3 -m json.tool
+```
+**Response:**
+```json
+{
+    "status": "ok"
+}
+```
+
+#### 2. Safe Web Search Output Masking (`/search?q=python`)
+A standard query containing no PII. Notice that when the retrieved search results contain private info (e.g., developer names or locations), the server automatically masks them using tags like `<PERSON>` or `<LOCATION>` before returning them.
+```bash
+curl -s "http://127.0.0.1:8000/search?q=python"
+```
+**Response (Excerpts):**
+```json
+{
+  "query": "python",
+  "results": [
+    {
+      "title": "Welcome to Python.org",
+      "url": "https://www.python.org/",
+      "content": "Python allows mandatory and optional arguments...",
+      "engine": "google"
+    },
+    {
+      "title": "Python",
+      "url": "https://en.wikipedia.org/wiki/Python",
+      "content": "<PERSON>",  // ← Developer's name automatically masked
+      "engine": "wikipedia"
+    },
+    {
+      "title": "Online Python - IDE, Editor...",
+      "url": "https://www.online-python.com/",
+      "content": "...development environment (<PERSON>). It is <LOCATION>, dependable...", // ← Personal names and locations masked
+      "engine": "duckduckgo"
+    }
+  ],
+  "number_of_results": 20
+}
+```
+
+#### 3. Search Query Input Guardrail Blocking (`/search?q=my email is test@example.com`)
+A scenario where an AI agent or a user accidentally includes a sensitive email address in the query. The MCP server safely intercepts the request and blocks it before it is dispatched to SearXNG.
+```bash
+curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
+```
+**Response (400 Bad Request):**
+```json
+{
+  "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
+}
+```
+
