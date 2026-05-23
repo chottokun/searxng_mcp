@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from src.routers import searxng_router
 from src.services.searxng_service import SearxngUnavailableError
+from src.config import settings
 from fastapi_mcp import FastApiMCP
 
 app = FastAPI(
@@ -12,6 +14,15 @@ app = FastAPI(
 
 # Include the API router
 app.include_router(searxng_router.router)
+
+# Set up CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOW_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Create and mount the MCP server, which will automatically discover the included router.
 mcp = FastApiMCP(app)

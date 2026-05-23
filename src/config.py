@@ -32,4 +32,7 @@ class Settings(BaseSettings):
         "LOCATION"
     ]
 
+    # CORS configuration
+    ALLOW_ORIGINS: list[str] = ["*"]
+
 settings = Settings()
