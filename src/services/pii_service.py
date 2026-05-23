@@ -28,6 +28,10 @@ class PiiService:
         self.anonymizer = AnonymizerEngine()
         self._register_custom_recognizers()
 
+        # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
+        # 設定が動的に変わることは想定していないため、初期化時に生成して使い回す
+        self.entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
+
     def _register_custom_recognizers(self):
         """
         日本の電話番号、マイナンバー、およびカスタム機密ワードを検出するための
@@ -258,11 +262,8 @@ class PiiService:
         # 無効な IPアドレス（誤検出の原因）を一時的に保護
         protected_q, ip_map = self._protect_invalid_ips(sanitized_q)
 
-        # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
-        entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
-
         # 日・英の両言語モデルで重複なく解析
-        results = self._analyze_multilingual(protected_q, entities)
+        results = self._analyze_multilingual(protected_q, self.entities)
 
         if not results:
             return self._restore_invalid_ips(protected_q, ip_map)
@@ -301,8 +302,6 @@ class PiiService:
         if not settings.PII_DETECTION_ENABLED or not settings.PII_MASK_RESPONSE:
             return result_set
 
-        entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
-
         for item in result_set.results:
             # API キー & IP アドレスを先行してマスク
             if item.title:
@@ -320,7 +319,7 @@ class PiiService:
 
             # タイトルのマスキング
             if item.title:
-                title_results = self._analyze_multilingual(item.title, entities)
+                title_results = self._analyze_multilingual(item.title, self.entities)
                 if title_results:
                     item.title = self.anonymizer.anonymize(
                         text=item.title,
@@ -329,7 +328,7 @@ class PiiService:
 
             # コンテンツ（スニペット）のマスキング
             if item.content:
-                content_results = self._analyze_multilingual(item.content, entities)
+                content_results = self._analyze_multilingual(item.content, self.entities)
                 if content_results:
                     item.content = self.anonymizer.anonymize(
                         text=item.content,
