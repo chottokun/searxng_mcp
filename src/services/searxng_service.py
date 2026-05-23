@@ -1,18 +1,19 @@
-import os
 import httpx
+from src.config import settings
 from src.schemas import ResultSet, SearchResult
 
 class SearxngUnavailableError(Exception):
-    """Custom exception for when the SearXNG service is unavailable."""
+    """SearXNGサービスが利用不可能な場合のカスタム例外。"""
     pass
 
 class SearxngService:
     """
-    Service layer for interacting with the SearXNG API.
+    SearXNG APIと連携するためのサービスレイヤー。
     """
 
     def __init__(self):
-        self.base_url = os.getenv("SEARXNG_URL", "http://searxng:8080")
+        # settings.SEARXNG_URLを一元的に使用
+        self.base_url = settings.SEARXNG_URL
         self.client = httpx.AsyncClient(base_url=self.base_url)
 
     async def search(self, q: str, categories: str | None, time_range: str | None) -> ResultSet:

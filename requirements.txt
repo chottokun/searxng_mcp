@@ -2,3 +2,5 @@ fastapi
 uvicorn
 httpx
 fastapi-mcp
+presidio-analyzer
+presidio-anonymizer

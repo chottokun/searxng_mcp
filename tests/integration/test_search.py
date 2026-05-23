@@ -2,7 +2,7 @@ import pytest
 import httpx
 from fastapi.testclient import TestClient
 from src.main import app
-from src.schemas import ResultSet
+from src.schemas import ResultSet, SearchResult
 
 @pytest.fixture(scope="module")
 def client():
@@ -50,13 +50,29 @@ def test_no_results_found(client, mocker):
     data = response.json()
     assert data == empty_result_set.model_dump()
 
-def test_successful_search(client):
+def test_successful_search(client, mocker):
     """
     Test a successful search query against the live service.
     This test checks for a valid response structure, not specific content.
     """
     # Arrange
     query = "python"
+    mock_result_set = ResultSet(
+        query=query,
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="Python Programming Language",
+                url="https://www.python.org/",
+                content="The official home of the Python Programming Language",
+                engine="google"
+            )
+        ]
+    )
+    mocker.patch(
+        "src.services.searxng_service.SearxngService.search",
+        return_value=mock_result_set
+    )
 
     # Act
     response = client.get(f"/search?q={query}")

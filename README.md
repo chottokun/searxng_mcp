@@ -1,139 +1,200 @@
 # SearXNG MCP Server
 
-This project provides a FastAPI-based server that exposes a search endpoint as a tool compatible with the Model Context Protocol (MCP). It is designed to act as a bridge between an AI agent (like Claude) and a SearXNG instance, allowing the agent to perform web searches.
+FastAPI-based server providing a search endpoint compatible with the Model Context Protocol (MCP). It features data guardrails using Microsoft Presidio to prevent Personally Identifiable Information (PII) leaks and sensitive word disclosures.
 
-## Features
+Model Context Protocol (MCP) に準拠した検索機能を提供する FastAPI ベースのサーバーです。個人情報（PII）の漏洩や機密ワードの送信を防ぐためのデータガードレール（情報流出防止機能）が標準で組み込まれています。
 
--   **FastAPI Backend**: A modern, fast web framework for building APIs.
--   **MCP Integration**: Exposes the search functionality as an MCP tool using the `fastapi-mcp` library, making it discoverable and usable by AI agents.
--   **Pydantic Schemas**: Clear, validated data models for API requests and responses.
--   **Edge Case Handling**: Includes tests and handlers for common edge cases like "no results found" and "service unavailable".
--   **Contract and Integration Testing**: A suite of tests to validate the API against its OpenAPI contract and to test its functionality.
+---
 
-## Project Structure
+## 目次 / Table of Contents
+1. [日本語版 / Japanese Version](#日本語版---japanese-version)
+2. [English Version](#english-version)
+
+---
+
+## 日本語版 - Japanese Version
+
+このプロジェクトは、AIエージェント（Claude Desktopなど）がSearXNGを介してWeb検索を行うためのブリッジです。検索クエリの送信時および検索結果の取得時の両方で、個人情報や機密性の高い言葉がやり取りされるのを自動的に防ぐ安全対策が施されています。
+
+### 主な機能
+
+- **FastAPIバックエンド**: 高速かつ非同期対応のモダンなAPIサーバー。
+- **MCP統合**: `fastapi-mcp` を使用して、検索エンドポイントをAIエージェント用のMCPツールとして公開。
+- **データガードレール（情報流出防止機能）**: 
+  - **クエリフィルタ（入力防御）**: 検索クエリ内に個人情報（メール、電話番号、クレジットカード等）や指定の機密ワードが含まれる場合に、検索処理をブロック（400 Bad Request）またはプレースホルダーに匿名化。
+  - **レスポンスフィルタ（出力防御）**: 検索結果（タイトルやコンテンツスニペット）に個人情報が含まれる場合、AIにデータを渡す前に自動マスキング（`[PHONE_NUMBER]` などのプレースホルダーに変換）。
+  - **カスタム検出**: 日本の携帯/固定電話番号フォーマット、12桁のマイナンバー、および指定された `SENSITIVE_WORDS`（機密ワード）の検出に対応。
+  - **AI用自律抑止指示**: ツールの詳細説明（Description）に日本語と英語で個人情報送信禁止の警告を明示し、AIモデル自身による自律的な送信防止を促進。
+- **契約・統合テスト**: OpenAPI定義との整合性を担保する契約テスト、およびモックによる外部依存を排除した堅牢な統合テストスイート。
+
+### プロジェクト構造
 
 ```
 .
 ├── requirements-dev.txt
 ├── requirements.txt
 ├── searxng_config/
-│   └── settings.yml
+│   └── settings.yml       # SearXNGの設定ファイル
 ├── src/
 │   ├── __init__.py
-│   ├── config.py         # Pydantic settings management
-│   ├── main.py           # FastAPI application entrypoint and MCP setup
+│   ├── config.py          # Pydanticを用いた環境変数・設定管理
+│   ├── main.py            # FastAPIアプリケーションのエントリーポイントおよびMCPのセットアップ
+│   ├── schemas.py         # リクエスト・レスポンスのPydanticモデル定義
 │   ├── routers/
-│   │   └── searxng_router.py # API router for the /search endpoint
-│   ├── schemas.py        # Pydantic models for data structures
+│   │   └── searxng_router.py # 検索エンドポイントの定義およびセキュリティガードレールの適用
 │   └── services/
-│       └── searxng_service.py # Mocked service layer for search logic
+│       ├── searxng_service.py # SearXNG APIとの連携サービス
+│       └── pii_service.py     # PII・機密ワードの検出およびマスキングを行うサービス
 └── tests/
     ├── contract/
-    │   └── test_search_api.py # OpenAPI contract validation tests
+    │   └── test_search_api.py # OpenAPI契約検証テスト
     └── integration/
-        └── test_search.py     # Integration tests for API functionality
+        ├── test_pii.py     # 個人情報・機密ワードフィルタリング機能の統合テスト
+        └── test_search.py  # 検索APIの統合テスト
 ```
 
-## Getting Started
+### 動作要件
 
-### Prerequisites
+- Python 3.11+
+- `pip` または `uv` （推奨）
+- Docker & Docker Compose （推奨環境）
 
--   Python 3.11+
--   `pip` for installing dependencies
--   Docker and Docker Compose (for the recommended setup)
+### 起動方法
 
-### Installation
+#### 1. Docker Composeを使用する場合（推奨）
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository_url>
-    cd <repository_name>
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Running the Server
-
-#### With Docker (Recommended)
-
-The project is configured to run with Docker Compose, which orchestrates both the FastAPI server and a SearXNG instance.
+FastAPIサーバーとSearXNGインスタンスが同時に起動します。
 
 ```bash
 docker compose up --build
 ```
-To run the services in the background, add the `-d` (detached) flag.
 
-The services will be available at:
--   **MCP Server**: `http://127.0.0.1:8000`
--   **SearXNG Instance**: `http://127.0.0.1:8080`
+バックグラウンドで起動する場合は `-d` フラグを追加してください。
 
-You can verify the SearXNG instance by opening `http://127.0.0.1:8080` in your browser. To check the MCP server, use `curl`:
+- **MCP サーバー**: `http://127.0.0.1:8000`
+- **SearXNG サーバー**: `http://127.0.0.1:8080`
+
+MCPサーバーの正常動作確認：
 ```bash
 curl -i http://127.0.0.1:8000/mcp
 ```
-This should return a `406 Not Acceptable` error with the message `"Client must accept text/event-stream"`, which indicates the MCP server is running correctly.
+`406 Not Acceptable`（`"Client must accept text/event-stream"`）が返ってくれば、正常に稼働しています。
 
-#### Locally with Uvicorn
+#### 2. ローカルで直接起動する場合
 
-You can also run the web server locally using `uvicorn`. However, this requires you to have a separate SearXNG instance running and to configure the `SEARXNG_URL` environment variable accordingly.
-
+依存関係のインストール：
 ```bash
-# Example:
+pip install -r requirements.txt
+# または
+uv pip install -r requirements.txt
+```
+
+環境変数でSearXNGの接続先を指定して起動します：
+```bash
 export SEARXNG_URL=http://localhost:8080
 uvicorn src.main:app --reload
 ```
 
-The server will be available at `http://127.0.0.1:8000`.
+- **APIドキュメント（Swagger UI）**: `http://127.0.0.1:8000/docs`
+- **MCPエンドポイント**: `http://127.0.0.1:8000/mcp`
 
--   **API Docs**: `http://127.0.0.1:8000/docs`
--   **MCP Endpoint**: `http://127.0.0.1:8000/mcp`
+### 個人情報保護（PII）設定一覧
 
-## Running Tests
+`.env` ファイルまたは環境変数経由で以下の設定をカスタマイズ可能です。
 
-To run the test suite, you need to install the development dependencies. This will also include the main application dependencies from `requirements.txt`.
+| 環境変数名 | 型 | デフォルト値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `PII_DETECTION_ENABLED` | bool | `True` | 個人情報および機密ワードの検出処理自体を有効にするか。 |
+| `PII_BLOCK_LEVEL` | str | `"block"` | PII検出時の動作。`block`（検索拒否・エラー返却）、`anonymize`（匿名化して検索続行）、`off`（無効）。 |
+| `PII_MASK_RESPONSE` | bool | `True` | 検索結果（タイトル、コンテンツ）内の個人情報をAIに返す前にマスキングするか。 |
+| `SENSITIVE_WORDS` | list | `["confidential", "secret", "社外秘"]` | 検出時に無条件で検索をブロックする機密ワードのリスト（カンマ区切りで環境変数に指定可能）。 |
+| `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | 検出対象とするPIIカテゴリの指定。 |
+
+### テストの実行方法
+
+開発用依存関係をインストールし、`pytest` を実行します。テストはモックを使用して設計されているため、外部SearXNGとの接続なしで実行可能です。
+
+```bash
+# 依存関係のインストール
+pip install -r requirements-dev.txt
+# または
+uv pip install -r requirements-dev.txt
+
+# テストの実行
+pytest -v
+# または
+uv run pytest -v
+```
+
+---
+
+## English Version
+
+This project acts as a bridge allowing AI agents (such as Claude) to perform web searches using a local or remote SearXNG instance. It is built with an inline data guardrail system to secure query inputs and sanitize search result outputs, preventing the accidental transmission or exposure of sensitive data.
+
+### Features
+
+- **FastAPI Backend**: A modern, asynchronous high-performance web framework.
+- **MCP Integration**: Exposes the search endpoint as an MCP-compatible tool using the `fastapi-mcp` library.
+- **Data Guardrails (PII & Sensitive Word Prevention)**:
+  - **Query Filter (Input Guard)**: Scans input search queries. If any PII (names, email addresses, phone numbers, etc.) or configured sensitive words are detected, it either blocks the search (returns a `400 Bad Request`) or anonymizes the entities in the query based on configuration.
+  - **Response Filter (Output Guard)**: Scans search result items (titles and content snippets). If any PII is found, it automatically masks them (e.g., replaces them with `[EMAIL_ADDRESS]`) before returning data to the AI agent.
+  - **Custom Recognizers**: Out-of-the-box support for Japanese mobile/landline phone number formats, 12-digit Japanese My Number IDs, and custom `SENSITIVE_WORDS` matching.
+  - **Self-Discipline Prompting**: Explicit warnings (Japanese/English) are embedded in the tool descriptions to proactively guide the LLM to avoid entering sensitive data.
+- **Contract & Integration Tests**: OpenAPI validation tests and comprehensive mocked integration tests.
+
+### Getting Started
+
+#### 1. Running with Docker Compose (Recommended)
+
+Spins up both the FastAPI application and the SearXNG instance automatically.
+
+```bash
+docker compose up --build
+```
+
+- **MCP Server**: `http://127.0.0.1:8000`
+- **SearXNG Server**: `http://127.0.0.1:8080`
+
+Verify that the MCP server is working correctly by sending a request:
+```bash
+curl -i http://127.0.0.1:8000/mcp
+```
+It should return a `406 Not Acceptable` (`"Client must accept text/event-stream"`), indicating that the server is up and listening.
+
+#### 2. Running Locally
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+Configure settings and run the application using `uvicorn`:
+```bash
+export SEARXNG_URL=http://localhost:8080
+uvicorn src.main:app --reload
+```
+
+- **API Documentation**: `http://127.0.0.1:8000/docs`
+- **MCP Endpoint**: `http://127.0.0.1:8000/mcp`
+
+### Guardrail Configuration Settings
+
+You can customize the security behaviors using environment variables or a `.env` file.
+
+| Environment Variable | Type | Default Value | Description |
+| :--- | :--- | :--- | :--- |
+| `PII_DETECTION_ENABLED` | bool | `True` | Enable or disable the entire PII scanning process. |
+| `PII_BLOCK_LEVEL` | str | `"block"` | Reaction when PII is detected in a query. Options: `block` (reject search & return 400), `anonymize` (replace with tags and proceed), `off` (do nothing). |
+| `PII_MASK_RESPONSE` | bool | `True` | Mask PII found in the search results before returning them to the agent. |
+| `SENSITIVE_WORDS` | list | `["confidential", "secret", "社外秘"]` | A list of sensitive words (comma-separated). Queries containing these will always be blocked. |
+| `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | A list of PII categories to recognize. |
+
+### Running Tests
+
+Tests are designed with mocks and can be executed offline without a live SearXNG service.
 
 ```bash
 pip install -r requirements-dev.txt
+pytest -v
 ```
-
-Then, run `pytest` from the project root. Make sure the Docker containers are running and set the `SEARXNG_URL` environment variable:
-
-```bash
-SEARXNG_URL='http://localhost:8080' pytest
-```
-
-## API Endpoint
-
-### `GET /search`
-
-Performs a search query.
-
--   **Query Parameters**:
-    -   `q` (str, required): The search query string.
-    -   `categories` (str, optional): A comma-separated list of search categories (e.g., 'news,files').
-    -   `time_range` (str, optional): A time range for the search (e.g., 'day', 'week', 'month').
--   **Success Response (200 OK)**:
-    ```json
-    {
-      "query": "fastapi",
-      "number_of_results": 26,
-      "results": [
-        {
-          "title": "FastAPI",
-          "url": "https://fastapi.tiangolo.com/",
-          "content": "FastAPI is a modern, fast (high-performance), web framework for building APIs with Python based on standard Python type hints...",
-          "engine": "brave"
-        }
-      ]
-    }
-    ```
--   **Service Unavailable (503 Service Unavailable)**:
-    -   Returned if the connection to the SearXNG service fails.
-    ```json
-    {
-      "detail": "SearXNG service is unavailable: <error details>"
-    }
-    ```

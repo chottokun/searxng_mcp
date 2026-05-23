@@ -23,11 +23,30 @@ def spec_resolver(openapi_spec):
     """Create a resolver for the OpenAPI spec."""
     return RefResolver.from_schema(openapi_spec)
 
-def test_search_api_contract(client, openapi_spec, spec_resolver):
+def test_search_api_contract(client, openapi_spec, spec_resolver, mocker):
     """
     Validates the /search endpoint response against the OpenAPI contract.
     """
-    # Arrange: Make a request to the endpoint
+    # Arrange: Make a request to the endpoint and mock the service response
+    from src.schemas import ResultSet, SearchResult
+    mock_result_set = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="Test Result",
+                url="https://example.com/test",
+                content="This is a test result snippet.",
+                engine="google"
+            )
+        ]
+    )
+    mocker.patch(
+        "src.services.searxng_service.SearxngService.search",
+        return_value=mock_result_set
+    )
+
+    # Act: Make a request to the endpoint
     response = client.get("/search?q=test")
     assert response.status_code == 200
     response_data = response.json()
