@@ -117,7 +117,124 @@ class PiiService:
             if not overlap:
                 merged.append(res_ja)
 
-        return merged
+        # IP_ADDRESS 検出の厳密な検証（誤検出の排除）
+        validated_results = []
+        for res in merged:
+            if res.entity_type == "IP_ADDRESS":
+                start = res.start
+                end = res.end
+                
+                # スパンの直前・直後が IP アドレスの一部になり得る文字（16進数、コロン、ドット）の場合は
+                # 部分一致による誤検知とみなして除外します。
+                if start > 0 and text[start-1] in "0123456789abcdefABCDEF:.":
+                    continue
+                if end < len(text) and text[end] in "0123456789abcdefABCDEF:.":
+                    continue
+                
+                ip_str = text[start:end]
+                # もしコロンもドットも含まない単なる単語ならスキップ
+                if "." not in ip_str and ":" not in ip_str:
+                    continue
+                try:
+                    import ipaddress
+                    ipaddress.ip_address(ip_str)
+                    validated_results.append(res)
+                except ValueError:
+                    # 無効なIPアドレスなので誤検知として除外
+                    continue
+            else:
+                validated_results.append(res)
+
+        return validated_results
+
+    def _protect_invalid_ips(self, text: str) -> tuple[str, dict[str, str]]:
+        """
+        IPアドレスの形式（ドット区切りの4つの数値、またはコロンを含む16進文字列）を持つが、
+        バリデーションで無効と判断された文字列を、一時的に無害なプレースホルダーに退避させます。
+        これにより、Presidio 等の NLP エンジンによる誤検知を防止します。
+        """
+        if not text:
+            return text, {}
+
+        placeholder_map = {}
+        counter = 0
+
+        # IPv4の見た目: 数字.数字.数字.数字
+        IPV4_LIKE = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
+        
+        # IPv6の見た目: コロンを含む16進数の塊（前後に他のIP文字が続かないこと）
+        IPV6_LIKE = (
+            r"(?<![0-9a-fA-F.:])(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
+            r"(?<![0-9a-fA-F.:])(?:[0-9a-fA-F]{1,4}:){1,7}:(?![0-9a-fA-F.:])|"
+            r"(?<![0-9a-fA-F.:]):(?::[0-9a-fA-F]{1,4}){1,7}(?![0-9a-fA-F.:])|"
+            r"(?<![0-9a-fA-F.:])::[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
+            r"(?<![0-9a-fA-F.:])::(?![0-9a-fA-F.:])"
+        )
+        
+        def replacer(match: re.Match) -> str:
+            nonlocal counter
+            ip_str = match.group(0)
+            try:
+                import ipaddress
+                ipaddress.ip_address(ip_str)
+                # 有効なIPアドレスなら置換しない
+                return ip_str
+            except ValueError:
+                # 無効なIPアドレスは一時的に退避
+                placeholder = f"__INVALID_IP_{counter}__"
+                placeholder_map[placeholder] = ip_str
+                counter += 1
+                return placeholder
+
+        # IPv4とIPv6に該当する無効なIP候補を保護
+        protected_text = text
+        protected_text = re.sub(IPV4_LIKE, replacer, protected_text)
+        protected_text = re.sub(IPV6_LIKE, replacer, protected_text)
+        return protected_text, placeholder_map
+
+    def _restore_invalid_ips(self, text: str, placeholder_map: dict[str, str]) -> str:
+        """
+        退避された無効なIPアドレスのプレースホルダーを元の文字列に復元します。
+        """
+        restored = text
+        for placeholder, original in placeholder_map.items():
+            restored = restored.replace(placeholder, original)
+        return restored
+
+    def _redact_secrets_and_ips(self, text: str) -> str:
+        """
+        GitHubトークン、OpenAI APIキー、およびIPアドレス（検証付き）をマスクします。
+        """
+        if not text:
+            return text
+
+        # 1. API キー & クレジットカードのマスク
+        GITHUB_TOKEN_PATTERN = r"gh[pousr]_[A-Za-z0-9_]{36,255}"
+        OPENAI_API_KEY_PATTERN = r"sk-[a-zA-Z0-9]{48,}"
+        CREDIT_CARD_PATTERN = r"\b(?:\d{4}[ -]?){3}\d{4}\b"
+        
+        redacted = text
+        redacted = re.sub(GITHUB_TOKEN_PATTERN, "[REDACTED_TOKEN]", redacted)
+        redacted = re.sub(OPENAI_API_KEY_PATTERN, "[REDACTED_KEY]", redacted)
+        redacted = re.sub(CREDIT_CARD_PATTERN, "[REDACTED_CC]", redacted)
+
+        # 2. IPアドレスのマスク (Lookaround + ipaddress 検証)
+        # 前後にIPアドレスを構成しうる文字が続かない英数字・記号の塊を抽出
+        IP_CANDIDATE_PATTERN = r"(?<![0-9a-fA-F.:])[0-9a-fA-F.:]+(?![0-9a-fA-F.:])"
+        
+        def ip_replacer(match: re.Match) -> str:
+            ip_str = match.group(0)
+            if "." not in ip_str and ":" not in ip_str:
+                return ip_str
+            try:
+                import ipaddress
+                ipaddress.ip_address(ip_str)
+                return "[REDACTED_IP]"
+            except ValueError:
+                return ip_str
+
+        redacted = re.sub(IP_CANDIDATE_PATTERN, ip_replacer, redacted)
+        return redacted
 
     def inspect_query(self, q: str) -> str:
         """
@@ -135,14 +252,20 @@ class PiiService:
         if not settings.PII_DETECTION_ENABLED or settings.PII_BLOCK_LEVEL == "off":
             return q
 
+        # API キーと IPアドレスを先行してマスク
+        sanitized_q = self._redact_secrets_and_ips(q)
+
+        # 無効な IPアドレス（誤検出の原因）を一時的に保護
+        protected_q, ip_map = self._protect_invalid_ips(sanitized_q)
+
         # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
         entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
 
         # 日・英の両言語モデルで重複なく解析
-        results = self._analyze_multilingual(q, entities)
+        results = self._analyze_multilingual(protected_q, entities)
 
         if not results:
-            return q
+            return self._restore_invalid_ips(protected_q, ip_map)
 
         # 機密ワードが含まれているか確認
         has_sensitive_word = any(res.entity_type == "SENSITIVE_WORD" for res in results)
@@ -158,12 +281,12 @@ class PiiService:
         # 匿名化して検索を実行する場合
         if settings.PII_BLOCK_LEVEL == "anonymize":
             anonymized_result = self.anonymizer.anonymize(
-                text=q,
+                text=protected_q,
                 analyzer_results=results
             )
-            return anonymized_result.text
+            return self._restore_invalid_ips(anonymized_result.text, ip_map)
 
-        return q
+        return self._restore_invalid_ips(protected_q, ip_map)
 
     def mask_results(self, result_set: ResultSet) -> ResultSet:
         """
@@ -181,6 +304,20 @@ class PiiService:
         entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
 
         for item in result_set.results:
+            # API キー & IP アドレスを先行してマスク
+            if item.title:
+                item.title = self._redact_secrets_and_ips(item.title)
+            if item.content:
+                item.content = self._redact_secrets_and_ips(item.content)
+
+            # 無効な IPアドレス（誤検出の原因）を一時的に保護
+            title_map = {}
+            content_map = {}
+            if item.title:
+                item.title, title_map = self._protect_invalid_ips(item.title)
+            if item.content:
+                item.content, content_map = self._protect_invalid_ips(item.content)
+
             # タイトルのマスキング
             if item.title:
                 title_results = self._analyze_multilingual(item.title, entities)
@@ -198,6 +335,12 @@ class PiiService:
                         text=item.content,
                         analyzer_results=content_results
                     ).text
+
+            # 無効な IPアドレスを復元
+            if item.title:
+                item.title = self._restore_invalid_ips(item.title, title_map)
+            if item.content:
+                item.content = self._restore_invalid_ips(item.content, content_map)
 
         return result_set
 

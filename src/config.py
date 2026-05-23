@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # SearXNGの設定
     SEARXNG_URL: str = "http://localhost:8080"
+    SEARXNG_TIMEOUT: float = 10.0
 
     # 個人情報（PII）検出および機密ワードフィルタリングの設定
     PII_DETECTION_ENABLED: bool = True
