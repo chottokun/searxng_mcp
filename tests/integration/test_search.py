@@ -30,7 +30,7 @@ def test_searxng_unavailable(client, mocker):
     assert response.status_code == 503
     json_response = response.json()
     assert "detail" in json_response
-    assert "SearXNG service is unavailable" in json_response["detail"]
+    assert "SearXNG service is temporarily unavailable" in json_response["detail"]
 
 def test_no_results_found(client, mocker):
     """

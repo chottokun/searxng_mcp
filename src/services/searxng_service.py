@@ -1,7 +1,10 @@
 import httpx
+import logging
 from src.schemas import ResultSet, SearchResult
 from src.config import settings
 from src.services.privacy_service import PrivacyService, get_privacy_service
+
+logger = logging.getLogger("searxng_mcp.searxng_service")
 
 class SearxngUnavailableError(Exception):
     """Custom exception for when the SearXNG service is unavailable."""
@@ -36,7 +39,8 @@ class SearxngService:
             response = await self.client.get("/search", params=params)
             response.raise_for_status()
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            raise SearxngUnavailableError(f"SearXNG service is unavailable: {e}")
+            logger.exception("Failed to connect to SearXNG")
+            raise SearxngUnavailableError("SearXNG service is temporarily unavailable")
 
         data = response.json()
         results = [

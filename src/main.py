@@ -9,8 +9,11 @@ from fastapi_mcp import FastApiMCP
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize the shared httpx.AsyncClient
-    async with httpx.AsyncClient(base_url=settings.SEARXNG_URL) as client:
+    # Initialize the shared httpx.AsyncClient with explicit timeout settings
+    async with httpx.AsyncClient(
+        base_url=settings.SEARXNG_URL,
+        timeout=settings.SEARXNG_TIMEOUT
+    ) as client:
         app.state.client = client
         yield
 
