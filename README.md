@@ -125,7 +125,7 @@ uvicorn src.main:app --reload
 | :--- | :--- | :--- | :--- |
 | `PII_DETECTION_ENABLED` | bool | `True` | 個人情報および機密ワードの検出処理自体を有効にするか。 |
 | `PII_BLOCK_LEVEL` | str | `"block"` | PII検出時の動作。`block`（検索拒否・エラー返却）、`anonymize`（匿名化して検索続行）、`off`（無効）。 |
-| `PII_MASK_RESPONSE` | bool | `True` | 検索結果（タイトル、コンテンツ）内の個人情報をAIに返す前にマスキングするか。 |
+| `PII_MASK_RESPONSE` | bool | `False` | 検索結果（タイトル、コンテンツ）内の個人情報をAIに返す前にマスキングするか。（デフォルトは検索の正確性を損なわないためオフ） |
 | `SENSITIVE_WORDS` | list | `[]` | 検出時に無条件で検索をブロックする機密ワードのリスト（カンマ区切りで環境変数に指定可能）。 |
 | `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | 検出対象とするPIIカテゴリの指定。 |
 
@@ -145,74 +145,70 @@ pytest -v
 uv run pytest -v
 ```
 
-### 実際の検証・テスト結果（事例）
+### 実際の検証・テスト結果とオプション設定別の具体例
 
 `docker compose` を用いて実際に SearXNG および MCP サーバーをローカルで起動し、接続テストを行った際の実機結果です。
 
-#### 1. ヘルスチェックの確認 (`/`)
-FastAPI サーバーが正常に起動し、SearXNG サービスと連携可能な状態であることを確認します。
-```bash
-curl -s http://127.0.0.1:8000/ | python3 -m json.tool
-```
-**出力結果:**
-```json
-{
-    "status": "ok"
-}
-```
+このプロジェクトでは、**「外部への意図しない個人情報送信（クエリ流出）を防ぐこと」を最も重大なセキュリティリスク**と捉えています。そのため、クエリフィルタ（入力防御）は初期状態で強力に有効化されている一方、検索効率と正確性を落とさないために検索結果（レスポンス）のマスキングは初期状態でオフ（`False`）に設定されています。
 
-#### 2. 個人情報（PII）を含まない通常の検索 (`/search?q=python`)
-検索キーワードに個人情報を含まない通常リクエストの例です。検索結果のコンテンツ内に含まれる個人情報（人名や地名など）が、AIエージェントに渡される前に自動的に匿名化・マスキングされているのが分かります。
-```bash
-curl -s "http://127.0.0.1:8000/search?q=python"
-```
-**出力結果 (抜粋):**
-```json
-{
-  "query": "python",
-  "results": [
-    {
-      "title": "Welcome to Python.org",
-      "url": "https://www.python.org/",
-      "content": "Python allows mandatory and optional arguments...",
-      "engine": "google"
-    },
-    {
-      "title": "Python",
-      "url": "https://en.wikipedia.org/wiki/Python",
-      "content": "<PERSON>",  // ← 人名が自動的に匿名化されています
-      "engine": "wikipedia"
-    },
-    {
-      "title": "Online Python - IDE, Editor...",
-      "url": "https://www.online-python.com/",
-      "content": "...development environment (<PERSON>). It is <LOCATION>, dependable...", // ← 人名や地名が自動的にマスキングされています
-      "engine": "duckduckgo"
-    }
-  ],
-  "number_of_results": 20
-}
-```
+---
 
-#### 3. クエリ入力における個人情報の送信ブロック (`/search?q=my email is test@example.com`)
-ユーザーやAIエージェントが、クエリ入力として誤ってメールアドレスなどの機密個人情報を送信してしまった場合のブロック動作例です。SearXNG にリクエストが送信される前に、サーバー側で安全に遮断されます。
-```bash
-curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
-```
-**出力結果 (400 Bad Request):**
-```json
-{
-  "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
-}
-```
+#### 1. 初期状態（デフォルト設定）での検証結果
+初期状態では、以下の環境変数が適用されています：
+* `PII_BLOCK_LEVEL="block"` (クエリ内の個人情報は送信せず完全にブロック)
+* `PII_MASK_RESPONSE=False` (検索結果に含まれる公開データはそのまま正確にAIへ受け渡す)
 
-#### 4. オプション設定ごとの動作例
+##### A. 通常の検索動作 (`/search?q=python`)
+検索キーワードに個人情報を含まない安全なクエリです。検索結果のコンテンツに他人の氏名などが含まれていても、デフォルトではマスキングされず正確な公開情報がそのまま取得されます。
+* **リクエスト:**
+  ```bash
+  curl -s "http://127.0.0.1:8000/search?q=python"
+  ```
+* **実際のレスポンス (一部抜粋):**
+  ```json
+  {
+    "query": "python",
+    "results": [
+      {
+        "title": "Welcome to Python.org",
+        "url": "https://www.python.org/",
+        "content": "Python allows mandatory and optional arguments...",
+        "engine": "google"
+      },
+      {
+        "title": "Python (programming language) - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+        "content": "Guido van Rossum began working on Python in the late 1980s as a successor...", // ← デフォルトでは実名「Guido van Rossum」が正確にそのまま出力されます
+        "engine": "wikipedia"
+      }
+    ],
+    "number_of_results": 20
+  }
+  ```
 
-設定オプション（環境変数 `PII_BLOCK_LEVEL` や `PII_MASK_RESPONSE`）の変更により、データガードレールの挙動をカスタマイズできます。以下はその動作結果の例です。
+##### B. 個人情報の外部送信ブロック (`/search?q=my email is test@example.com`)
+ユーザーやAIエージェントが、クエリ内に誤ってメールアドレスなどの機密情報を送信してしまった場合のブロック動作例です。SearXNG にリクエストが送信される前に、サーバー側で安全に遮断されます。
+* **リクエスト:**
+  ```bash
+  curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
+  ```
+* **実際のレスポンス (400 Bad Request):**
+  ```json
+  {
+    "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
+  }
+  ```
 
-##### A. ブロックモード (`PII_BLOCK_LEVEL="block"` - 初期値)
-クエリ内に個人情報が検出された場合、検索処理自体を拒否してエラーを返却します。安全性を最優先する環境に適しています。
-* **入力クエリ:** `Find sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM` (OpenAIのAPIキーを含む)
+---
+
+#### 2. オプション設定を変更した際の挙動一覧
+
+環境変数や `.env` の設定を変更することで、各種ガードレールの振る舞いをユースケースに合わせて調整できます。
+
+##### A. クエリブロックモード (`PII_BLOCK_LEVEL="block"` - デフォルト)
+クエリ内に個人情報やAPIキー、クレジットカード番号などが検出された場合、検索処理自体を完全に拒否します。セキュリティ最優先の安全な環境に適しています。
+* **設定:** `PII_BLOCK_LEVEL="block"`
+* **入力クエリ:** `Find sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM` (OpenAIのAPIキーを含むクエリ)
 * **レスポンス (400 Bad Request):**
   ```json
   {
@@ -220,29 +216,124 @@ curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
   }
   ```
 
-##### B. 匿名化モード (`PII_BLOCK_LEVEL="anonymize"`)
-クエリ内の個人情報をプレースホルダー（タグ）に自動置換した上で、検索を安全に続行します。利便性と安全性のバランスを取る場合に適しています。
+##### B. クエリ匿名化モード (`PII_BLOCK_LEVEL="anonymize"`)
+クエリ内の個人情報を検出して自動的にプレースホルダー（タグ）に置換（匿名化）した上で、検索を安全に続行します。利便性と安全性のバランスを取る場合に適しています。
+* **設定:** `PII_BLOCK_LEVEL="anonymize"`
 * **入力クエリ:** `Contact john.doe@example.com`
-* **SearXNGへ送信されるクエリ (匿名化後):** `Contact [EMAIL_ADDRESS]`
-* **動作結果:** 個人情報が隠されたクエリが安全に SearXNG へ送信され、通常の検索結果が返却されます。
+* **実際にSearXNGへ送信されるクエリ:** `Contact [EMAIL_ADDRESS]`
+* **レスポンス:** 個人情報自体は伏せられた状態で検索が実行され、安全に検索結果が返却されます。
 
-##### C. 検索結果のマスキング無効化 (`PII_MASK_RESPONSE=False`)
-検索結果に含まれる個人情報のマスキング（`<PERSON>` 等への変換）を行わず、元データのままAIエージェントに渡します。
-* **検索クエリ:** `python`
-* **レスポンス (マスキング無効状態):**
+##### C. 検索結果マスキング有効化 (`PII_MASK_RESPONSE=True`)
+チャット履歴ログの保護や、AIコンテキストに不要な個人情報が蓄積されることを防ぐため、検索結果のコンテンツに含まれる個人情報（人名、電話番号、メールなど）をAIエージェントに渡す前にマスキングします。
+* **設定:** `PII_MASK_RESPONSE=True`
+* **入力クエリ:** `python`
+* **実際のレスポンス (一部抜粋):**
   ```json
   {
     "query": "python",
     "results": [
       {
-        "title": "Python",
-        "url": "https://en.wikipedia.org/wiki/Python",
-        "content": "Guido van Rossum began working on Python in...", // ← マスキングされず、本名がそのまま出力されます
-        "engine": "wikipedia"
-      }
-    ]
+        "title": "Welcome to Python.org",
+        "url": "https://www.python.org/",
+        "content": "Python allows mandatory and optional arguments...",
+        "engine": "google"
+      },
+    ],
+    "number_of_results": 20
   }
   ```
+
+#### 3. MCPプロトコル（JSON-RPC 2.0）接続とツール登録の検証事例
+
+MCP クライアント（AIエージェント）との接続に必要な **JSON-RPC 2.0 準拠のハンドシェイク** および **ツールリスト取得** の実際の動作検証ログです。
+
+##### A. 初期化シーケンスの実行 (`initialize` リクエスト)
+クライアントから送られた初期化要求に対し、MCP規格に沿ったプロトコルバージョンとサーバー能力（Capabilities）を正確に応答します。
+* **リクエスト (JSON-RPC 2.0):**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "mcp-test-client",
+        "version": "1.0.0"
+      }
+    }
+  }
+  ```
+* **実際の返答内容:**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {
+        "experimental": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "serverInfo": {
+        "name": "SearXNG MCP Server",
+        "version": "A FastAPI server providing a tool for searching with SearXNG, compatible with fastapi-mcp."
+      }
+    }
+  }
+  ```
+
+##### B. ツール定義の取得 (`tools/list` リクエスト)
+初期化の完了後、AIエージェントが使用可能なツールリストを取得するリクエストに対し、私たちが実装した `search_searxng` ツールの仕様（名前、説明、スキーマ）が正確に返却されます。
+* **リクエスト (JSON-RPC 2.0):**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {}
+  }
+  ```
+* **実際の返答内容:**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "tools": [
+        {
+          "name": "search_searxng",
+          "description": "SearXNG を使用して検索を実行します（個人情報・機密情報の送信は禁止されています）...",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "検索クエリ文字列。個人情報（氏名、住所、メール、電話番号等）や機密ワードは絶対に含めないでください。 / The search query string. DO NOT include any PII or sensitive/confidential words."
+              },
+              "categories": {
+                "type": "string",
+                "description": "カンマ区切りの検索カテゴリ (例: 'news,files') / Comma-separated list of search categories."
+              },
+              "time_range": {
+                "type": "string",
+                "description": "検索期間 (例: 'day', 'week', 'month') / Time range for the search."
+              }
+            },
+            "required": [
+              "q"
+            ]
+          }
+        }
+      ]
+    }
+  }
+  ```
+  *(注: このツール定義の `description` には、AIエージェント自身が個人情報の送信を自律的に抑止するためのプロンプト指示が自動的に埋め込まれています。)*
+
 
 
 
@@ -326,7 +417,7 @@ You can customize the security behaviors using environment variables or a `.env`
 | :--- | :--- | :--- | :--- |
 | `PII_DETECTION_ENABLED` | bool | `True` | Enable or disable the entire PII scanning process. |
 | `PII_BLOCK_LEVEL` | str | `"block"` | Reaction when PII is detected in a query. Options: `block` (reject search & return 400), `anonymize` (replace with tags and proceed), `off` (do nothing). |
-| `PII_MASK_RESPONSE` | bool | `True` | Mask PII found in the search results before returning them to the agent. |
+| `PII_MASK_RESPONSE` | bool | `False` | Mask PII found in the search results before returning them to the agent. (Default: False, to preserve accuracy of retrieved public web data) |
 | `SENSITIVE_WORDS` | list | `[]` | A list of sensitive words (comma-separated). Queries containing these will always be blocked. |
 | `PII_ENTITIES` | list | `["PERSON", "EMAIL_ADDRESS", ...]` | A list of PII categories to recognize. |
 
@@ -343,69 +434,65 @@ pytest -v
 
 These are actual curl command outputs demonstrating the guardrails in action with `docker compose`.
 
-#### 1. Health Check (`/`)
-Verify that the FastAPI server is running correctly and integrated.
-```bash
-curl -s http://127.0.0.1:8000/ | python3 -m json.tool
-```
-**Response:**
-```json
-{
-    "status": "ok"
-}
-```
+In this project, **"leaking sensitive data via external search queries" is considered the primary security risk**. Therefore, the query input guardrail is fully activated by default, while response masking (output guard) is disabled (`False`) by default to ensure search accuracy and efficiency.
 
-#### 2. Safe Web Search Output Masking (`/search?q=python`)
-A standard query containing no PII. Notice that when the retrieved search results contain private info (e.g., developer names or locations), the server automatically masks them using tags like `<PERSON>` or `<LOCATION>` before returning them.
-```bash
-curl -s "http://127.0.0.1:8000/search?q=python"
-```
-**Response (Excerpts):**
-```json
-{
-  "query": "python",
-  "results": [
-    {
-      "title": "Welcome to Python.org",
-      "url": "https://www.python.org/",
-      "content": "Python allows mandatory and optional arguments...",
-      "engine": "google"
-    },
-    {
-      "title": "Python",
-      "url": "https://en.wikipedia.org/wiki/Python",
-      "content": "<PERSON>",  // ← Developer's name automatically masked
-      "engine": "wikipedia"
-    },
-    {
-      "title": "Online Python - IDE, Editor...",
-      "url": "https://www.online-python.com/",
-      "content": "...development environment (<PERSON>). It is <LOCATION>, dependable...", // ← Personal names and locations masked
-      "engine": "duckduckgo"
-    }
-  ],
-  "number_of_results": 20
-}
-```
+---
 
-#### 3. Search Query Input Guardrail Blocking (`/search?q=my email is test@example.com`)
-A scenario where an AI agent or a user accidentally includes a sensitive email address in the query. The MCP server safely intercepts the request and blocks it before it is dispatched to SearXNG.
-```bash
-curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
-```
-**Response (400 Bad Request):**
-```json
-{
-  "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
-}
-```
+#### 1. Default Behavior (Out-of-the-box Settings)
+Under default configuration, the following environment variables apply:
+* `PII_BLOCK_LEVEL="block"` (Block queries containing PII entirely to prevent external leakage)
+* `PII_MASK_RESPONSE=False` (Pass retrieved search data to the AI agent intact)
 
-#### 4. Examples by Configuration Options
+##### A. Standard Safe Web Search (`/search?q=python`)
+A standard safe query. When retrieved results contain third-party public names or locations, they are passed as raw text without being masked, keeping search data accurate.
+* **Request:**
+  ```bash
+  curl -s "http://127.0.0.1:8000/search?q=python"
+  ```
+* **Actual Response (Excerpt):**
+  ```json
+  {
+    "query": "python",
+    "results": [
+      {
+        "title": "Welcome to Python.org",
+        "url": "https://www.python.org/",
+        "content": "Python allows mandatory and optional arguments...",
+        "engine": "google"
+      },
+      {
+        "title": "Python (programming language) - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+        "content": "Guido van Rossum began working on Python in the late 1980s as a successor...", // ← Real name "Guido van Rossum" is accurately preserved by default
+        "engine": "wikipedia"
+      }
+    ],
+    "number_of_results": 20
+  }
+  ```
 
-You can customize the guardrail behavior by changing environment variables or `.env` configuration (e.g., `PII_BLOCK_LEVEL` or `PII_MASK_RESPONSE`). Below are output examples under each option.
+##### B. Search Query Input Guardrail Blocking (`/search?q=my email is test@example.com`)
+A scenario where an AI agent or a user accidentally includes a private email address in the query. The MCP server safely intercepts the request and blocks it before it is dispatched to the external SearXNG instance.
+* **Request:**
+  ```bash
+  curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
+  ```
+* **Actual Response (400 Bad Request):**
+  ```json
+  {
+    "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
+  }
+  ```
 
-##### A. Block Mode (`PII_BLOCK_LEVEL="block"` - Default)
-Rejects the search processing and returns an error if PII is detected in a query. Ideal for high-security environments.
+---
+
+#### 2. Guardrail Customization Behavior Examples
+
+You can customize the guardrail behavior by changing environment variables or `.env` configuration (e.g., `PII_BLOCK_LEVEL` or `PII_MASK_RESPONSE`).
+
+##### A. Query Block Mode (`PII_BLOCK_LEVEL="block"` - Default)
+Rejects search processing entirely and returns an HTTP error if PII is detected in a query. Best for strict security-first environments.
+* **Setting:** `PII_BLOCK_LEVEL="block"`
 * **Input Query:** `Find sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM` (Contains an OpenAI API Key)
 * **Response (400 Bad Request):**
   ```json
@@ -414,27 +501,127 @@ Rejects the search processing and returns an error if PII is detected in a query
   }
   ```
 
-##### B. Anonymization Mode (`PII_BLOCK_LEVEL="anonymize"`)
+##### B. Query Anonymization Mode (`PII_BLOCK_LEVEL="anonymize"`)
 Automatically replaces private data with placeholder tags and safely proceeds with the search. Ideal for balancing utility and security.
+* **Setting:** `PII_BLOCK_LEVEL="anonymize"`
 * **Input Query:** `Contact john.doe@example.com`
 * **Anonymized Query Sent to SearXNG:** `Contact [EMAIL_ADDRESS]`
-* **Behavior:** The query is dispatched to SearXNG safely, and normal results are returned.
+* **Response:** Query runs safely with anonymized tokens, and normal results are returned.
 
-##### C. Response Masking Disabled (`PII_MASK_RESPONSE=False`)
-Passes raw search results containing sensitive entities straight to the AI agent without converting them to `<PERSON>` or other tags.
+##### C. Response Masking Enabled (`PII_MASK_RESPONSE=True`)
+Masks private data (names, phone numbers, emails, etc.) found in the search results before returning them to the agent. Helps protect chat logs or active context from collecting unrelated third-party private data.
+* **Setting:** `PII_MASK_RESPONSE=True`
 * **Search Query:** `python`
-* **Response (Masking Disabled):**
+* **Response (Masking Enabled):**
   ```json
   {
     "query": "python",
     "results": [
       {
-        "title": "Python",
-        "url": "https://en.wikipedia.org/wiki/Python",
-        "content": "Guido van Rossum began working on Python in...", // ← Developer's real name is preserved
+        "title": "Welcome to Python.org",
+        "url": "https://www.python.org/",
+        "content": "Python allows mandatory and optional arguments...",
+        "engine": "google"
+      },
+      {
+        "title": "Python (programming language) - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+        "content": "<PERSON> began working on Python in the late 1980s as a successor...", // ← Developer's real name is masked as `<PERSON>`
         "engine": "wikipedia"
       }
-    ]
+    ],
+    "number_of_results": 20
   }
   ```
+
+#### 3. MCP Protocol (JSON-RPC 2.0) Handshake & Tool Discovery Verification
+
+Actual verification logs proving compliance with the **JSON-RPC 2.0 specification** required to handshake and discover tools on the MCP client.
+
+##### A. Session Initialization (`initialize` Request)
+Responds with the exact protocol version and server capabilities matching the official Model Context Protocol (MCP) spec upon receiving a client handshake.
+* **Request (JSON-RPC 2.0):**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "mcp-test-client",
+        "version": "1.0.0"
+      }
+    }
+  }
+  ```
+* **Actual Response:**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {
+        "experimental": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "serverInfo": {
+        "name": "SearXNG MCP Server",
+        "version": "A FastAPI server providing a tool for searching with SearXNG, compatible with fastapi-mcp."
+      }
+    }
+  }
+  ```
+
+##### B. Tool Discovery (`tools/list` Request)
+Returns the precise schema, parameters, and descriptions for the `search_searxng` tool, enabling seamless automatic integration on MCP clients (like Claude Desktop).
+* **Request (JSON-RPC 2.0):**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {}
+  }
+  ```
+* **Actual Response:**
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "tools": [
+        {
+          "name": "search_searxng",
+          "description": "SearXNG を使用して検索を実行します（個人情報・機密情報の送信は禁止されています）...",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "検索クエリ文字列。個人情報（氏名、住所、メール、電話番号等）や機密ワードは絶対に含めないでください。 / The search query string. DO NOT include any PII or sensitive/confidential words."
+              },
+              "categories": {
+                "type": "string",
+                "description": "カンマ区切りの検索カテゴリ (例: 'news,files') / Comma-separated list of search categories."
+              },
+              "time_range": {
+                "type": "string",
+                "description": "検索期間 (例: 'day', 'week', 'month') / Time range for the search."
+              }
+            },
+            "required": [
+              "q"
+            ]
+          }
+        }
+      ]
+    }
+  }
+  ```
+
 
