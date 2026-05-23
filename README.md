@@ -1,8 +1,8 @@
 # SearXNG MCP Server
 
-FastAPI-based server providing a search endpoint compatible with the Model Context Protocol (MCP). It features data guardrails using Microsoft Presidio to prevent Personally Identifiable Information (PII) leaks and sensitive word disclosures.
+FastAPI-based server providing a search endpoint compatible with the Model Context Protocol (MCP). It features robust data guardrails using Microsoft Presidio to prevent external information leaks via search queries and to protect user privacy by masking retrieved results within the AI context.
 
-Model Context Protocol (MCP) に準拠した検索機能を提供する FastAPI ベースのサーバーです。個人情報（PII）の漏洩や機密ワードの送信を防ぐためのデータガードレール（情報流出防止機能）が標準で組み込まれています。
+Model Context Protocol (MCP) に準拠した検索機能を提供する FastAPI ベースのサーバーです。AIエージェントが外部へ機密情報を送信してしまう「外部情報流出」を防ぐためのクエリフィルタと、検索された公開データからAIコンテキストへの個人情報混入を防ぐ出力フィルタという二重のデータガードレールを実装しています。
 
 ---
 
@@ -14,16 +14,16 @@ Model Context Protocol (MCP) に準拠した検索機能を提供する FastAPI 
 
 ## 日本語版 - Japanese Version
 
-このプロジェクトは、AIエージェント（Claude Desktopなど）がSearXNGを介してWeb検索を行うためのブリッジです。検索クエリの送信時および検索結果の取得時の両方で、個人情報や機密性の高い言葉がやり取りされるのを自動的に防ぐ安全対策が施されています。
+このプロジェクトは、AIエージェント（Claude Desktopなど）がSearXNGを介してWeb検索を行うためのブリッジです。**AIエージェントが外部（インターネット上）へ機密情報を送信してしまう「外部情報流出リスク」を未然に防ぐ強力な入力防御**と、検索された公開データから**AIエージェントのコンテキスト（チャットログ等）へ他者の個人情報が無用に蓄積されるのを防ぐ出力プライバシー保護**の二重のガードレールが施されています。
 
 ### 主な機能
 
 - **FastAPIバックエンド**: 高速かつ非同期対応のモダンなAPIサーバー。
 - **MCP統合**: `fastapi-mcp` を使用して、検索エンドポイントをAIエージェント用のMCPツールとして公開。
-- **データガードレール（情報流出防止機能）**: 
+- **データガードレール（情報流出防止・プライバシー保護機能）**: 
   - **多言語インテリジェントマージ解析**: 英語（`en_core_web_sm`）と日本語（`ja_core_news_sm`）の両方のspaCy言語モデルおよび認識器を同時に実行・マージする高度な解析を実装。日本語文章内に含まれる英語メールアドレスや、日英混在したクエリでも漏れなく確実に個人情報（PII）を検出します。
-  - **クエリフィルタ（入力防御）**: 検索クエリ内に個人情報（メール、電話番号、クレジットカード等）や指定の機密ワードが含まれる場合に、検索処理をブロック（400 Bad Request）またはプレースホルダーに匿名化。
-  - **レスポンスフィルタ（出力防御）**: 検索結果（タイトルやコンテンツスニペット）に個人情報が含まれる場合、AIにデータを渡す前に自動マスキング（`[PHONE_NUMBER]` などのプレースホルダーに変換）。
+  - **クエリフィルタ（入力防御 - 最重要セキュリティ）**: AIエージェントが誤って内部の機密データや個人情報（APIキー、メール、電話番号、クレジットカード等）を検索クエリとして**外部へ送信（流出）するのを完全にブロック**（400 Bad Request）、またはプレースホルダーに匿名化します。
+  - **レスポンスフィルタ（出力防御 - プライバシー＆コンプライアンス）**: 検索された結果（タイトルやコンテンツスニペット）に個人情報が含まれる場合、AIのコンテキストや保存ログに不要な個人情報が取り込まれるのを防ぐため、自動マスキング（`<PERSON>` 等のプレースホルダーに変換）を施します。
   - **日本語・マイナンバーの境界バグ修正**: 日本語の文脈に隣接する12桁のマイナンバーも完全に検出できるように正規表現パターンを最適化（`(?<!\d)\d{12}(?!\d)`）。
   - **カスタム検出**: 日本の携帯/固定電話番号フォーマット、12桁のマイナンバー、および指定された `SENSITIVE_WORDS`（機密ワード）の検出に対応。
   - **AI用自律抑止指示**: ツールの詳細説明（Description）に日本語と英語で個人情報送信禁止の警告を明示し、AIモデル自身による自律的な送信防止を促進。
@@ -250,16 +250,16 @@ curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
 
 ## English Version
 
-This project acts as a bridge allowing AI agents (such as Claude) to perform web searches using a local or remote SearXNG instance. It is built with an inline data guardrail system to secure query inputs and sanitize search result outputs, preventing the accidental transmission or exposure of sensitive data.
+This project acts as a bridge allowing AI agents (such as Claude) to perform web searches using a local or remote SearXNG instance. It is engineered with a dual data-guardrail system: **a robust Query Input Filter to prevent the critical risk of transmitting internal sensitive data to the external web**, and a **Response Output Filter to preserve user privacy and maintain compliance** by sanitizing public search results before they are loaded into the AI's active context (and logs).
 
 ### Features
 
 - **FastAPI Backend**: A modern, asynchronous high-performance web framework.
 - **MCP Integration**: Exposes the search endpoint as an MCP-compatible tool using the `fastapi-mcp` library.
-  - **Data Guardrails (PII & Sensitive Word Prevention)**:
+  - **Data Guardrails (Security & Privacy Compliance)**:
     - **Multilingual Intelligent Merging**: Concurrently runs and merges results from both English (`en_core_web_sm`) and Japanese (`ja_core_news_sm`) spaCy models and custom recognizers. It captures PII like English emails written within Japanese sentences or mixed English/Japanese (code-switching) queries seamlessly without any loss.
-    - **Query Filter (Input Guard)**: Scans input search queries. If any PII (names, email addresses, phone numbers, etc.) or configured sensitive words are detected, it either blocks the search (returns a `400 Bad Request`) or anonymizes the entities in the query based on configuration.
-    - **Response Filter (Output Guard)**: Scans search result items (titles and content snippets) and automatically masks them before returning data to the AI agent.
+    - **Query Filter (Input Guard - Crucial Security)**: Scans input search queries. If any internal PII (API keys, email addresses, phone numbers, credit card numbers, etc.) or configured sensitive words are detected, it **blocks the query entirely** (returns a `400 Bad Request`) or anonymizes the entities to **prevent accidental leaks to the external web**.
+    - **Response Filter (Output Guard - Privacy & Compliance)**: Scans retrieved search results (titles and content snippets) and automatically masks them with generic tags (e.g., `<PERSON>`) before returning them to the agent to avoid cluttering chat histories or active context with third-party private data.
     - **Optimized for Japanese Contexts**: Fixed single-word-boundary bugs for Japanese text structures, ensuring 12-digit Japanese My Number IDs are successfully detected even when adjacent to Japanese characters (`(?<!\d)\d{12}(?!\d)`).
     - **Custom Recognizers**: Out-of-the-box support for Japanese mobile/landline phone number formats, 12-digit Japanese My Number IDs, and custom `SENSITIVE_WORDS` matching.
     - **Self-Discipline Prompting**: Explicit warnings (Japanese/English) are embedded in the tool descriptions to proactively guide the LLM to avoid entering sensitive data.
