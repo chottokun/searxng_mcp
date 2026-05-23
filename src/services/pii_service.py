@@ -1,10 +1,12 @@
 import re
-from typing import List
-from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
+
+from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
+
 from src.config import settings
 from src.schemas import ResultSet
+
 
 class PiiService:
     """
@@ -23,7 +25,7 @@ class PiiService:
         }
         provider = NlpEngineProvider(nlp_configuration=nlp_config)
         nlp_engine = provider.create_engine()
-        
+
         self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self.anonymizer = AnonymizerEngine()
         self._register_custom_recognizers()
@@ -48,7 +50,8 @@ class PiiService:
             self.analyzer.registry.add_recognizer(jp_phone_recognizer)
 
         # 2. マイナンバー (12桁の数字)
-        # 日本語テキスト内でも単語境界に依存せず正しくマッチするよう、(?<!\d)...(?!\d) を使用します
+        # 日本語テキスト内でも単語境界に依存せず正しくマッチするよう、
+        # (?<!\d)...(?!\d) を使用します
         my_number_pattern = Pattern(
             name="my_number_pattern",
             regex=r"(?<!\d)\d{12}(?!\d)",
@@ -66,7 +69,8 @@ class PiiService:
         if settings.SENSITIVE_WORDS:
             sensitive_patterns = []
             for i, word in enumerate(settings.SENSITIVE_WORDS):
-                # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、エスケープした単語そのものにマッチさせます
+                # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、
+                # エスケープした単語そのものにマッチさせます
                 sensitive_patterns.append(
                     Pattern(
                         name=f"sensitive_word_{i}",
@@ -82,7 +86,7 @@ class PiiService:
                 )
                 self.analyzer.registry.add_recognizer(sensitive_recognizer)
 
-    def _analyze_multilingual(self, text: str, entities: List[str]) -> list:
+    def _analyze_multilingual(self, text: str, entities: list[str]) -> list:
         """
         英語（en）と日本語（ja）の両方のNLPモデル・認識器で解析を行い、結果を統合します。
         スパン（位置）が重複する場合、より高スコアまたは詳細なエンティティを優先してマージします。
@@ -109,7 +113,8 @@ class PiiService:
                 # 完全に重なっているか、一部重複している場合
                 if not (res_ja.end <= res_en.start or res_ja.start >= res_en.end):
                     overlap = True
-                    # スコアが高い方を優先する。同スコアの場合は詳細な日本語NERモデルを優先
+                    # スコアが高い方を優先する。
+                    # 同スコアの場合は詳細な日本語NERモデルを優先
                     if res_ja.score >= res_en.score:
                         merged.remove(res_en)
                         merged.append(res_ja)
@@ -123,14 +128,15 @@ class PiiService:
             if res.entity_type == "IP_ADDRESS":
                 start = res.start
                 end = res.end
-                
-                # スパンの直前・直後が IP アドレスの一部になり得る文字（16進数、コロン、ドット）の場合は
+
+                # スパンの直前・直後が IP アドレスの一部になり得る文字
+                # （16進数、コロン、ドット）の場合は
                 # 部分一致による誤検知とみなして除外します。
                 if start > 0 and text[start-1] in "0123456789abcdefABCDEF:.":
                     continue
                 if end < len(text) and text[end] in "0123456789abcdefABCDEF:.":
                     continue
-                
+
                 ip_str = text[start:end]
                 # もしコロンもドットも含まない単なる単語ならスキップ
                 if "." not in ip_str and ":" not in ip_str:
@@ -161,7 +167,7 @@ class PiiService:
 
         # IPv4の見た目: 数字.数字.数字.数字
         IPV4_LIKE = r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"
-        
+
         # IPv6の見た目: コロンを含む16進数の塊（前後に他のIP文字が続かないこと）
         IPV6_LIKE = (
             r"(?<![0-9a-fA-F.:])(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
@@ -170,7 +176,7 @@ class PiiService:
             r"(?<![0-9a-fA-F.:])::[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
             r"(?<![0-9a-fA-F.:])::(?![0-9a-fA-F.:])"
         )
-        
+
         def replacer(match: re.Match) -> str:
             nonlocal counter
             ip_str = match.group(0)
@@ -212,7 +218,7 @@ class PiiService:
         GITHUB_TOKEN_PATTERN = r"gh[pousr]_[A-Za-z0-9_]{36,255}"
         OPENAI_API_KEY_PATTERN = r"sk-[a-zA-Z0-9]{48,}"
         CREDIT_CARD_PATTERN = r"\b(?:\d{4}[ -]?){3}\d{4}\b"
-        
+
         redacted = text
         redacted = re.sub(GITHUB_TOKEN_PATTERN, "[REDACTED_TOKEN]", redacted)
         redacted = re.sub(OPENAI_API_KEY_PATTERN, "[REDACTED_KEY]", redacted)
@@ -221,7 +227,7 @@ class PiiService:
         # 2. IPアドレスのマスク (Lookaround + ipaddress 検証)
         # 前後にIPアドレスを構成しうる文字が続かない英数字・記号の塊を抽出
         IP_CANDIDATE_PATTERN = r"(?<![0-9a-fA-F.:])[0-9a-fA-F.:]+(?![0-9a-fA-F.:])"
-        
+
         def ip_replacer(match: re.Match) -> str:
             ip_str = match.group(0)
             if "." not in ip_str and ":" not in ip_str:
@@ -239,15 +245,16 @@ class PiiService:
     def inspect_query(self, q: str) -> str:
         """
         検索クエリを検査し、設定に基づいてPIIや機密ワードのブロックまたは匿名化を行います。
-        
+
         Args:
             q: 検査対象のクエリ文字列
-            
+
         Returns:
             匿名化されたクエリ（PII_BLOCK_LEVEL="anonymize"の場合）
-            
+
         Raises:
-            ValueError: PIIまたは機密ワードが検出され、PII_BLOCK_LEVEL="block"または機密ワード検出の場合
+            ValueError: PIIまたは機密ワードが検出され、
+                PII_BLOCK_LEVEL="block"または機密ワード検出の場合
         """
         if not settings.PII_DETECTION_ENABLED or settings.PII_BLOCK_LEVEL == "off":
             return q
@@ -269,13 +276,14 @@ class PiiService:
 
         # 機密ワードが含まれているか確認
         has_sensitive_word = any(res.entity_type == "SENSITIVE_WORD" for res in results)
-        
+
         # 機密ワードが検知された場合、またはPII検知かつブロックレベルが "block" の場合
         if has_sensitive_word or settings.PII_BLOCK_LEVEL == "block":
-            detected_types = list(set(res.entity_type for res in results))
+            detected_types = list({res.entity_type for res in results})
             detected_str = ", ".join(detected_types)
             raise ValueError(
-                f"送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: {detected_str})"
+                "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、"
+                f"検索をブロックしました。(検出タイプ: {detected_str})"
             )
 
         # 匿名化して検索を実行する場合
@@ -291,10 +299,10 @@ class PiiService:
     def mask_results(self, result_set: ResultSet) -> ResultSet:
         """
         検索結果のタイトルとコンテンツに含まれる個人情報や機密情報をマスキングします。
-        
+
         Args:
             result_set: マスキング対象の検索結果セット
-            
+
         Returns:
             マスキング処理済みの検索結果セット
         """
