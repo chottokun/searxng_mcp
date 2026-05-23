@@ -97,3 +97,54 @@ def test_successful_search(client, mocker):
         assert first_result.url.startswith("http")
         # Content can sometimes be None, so we don't assert its type strictly
         assert isinstance(first_result.engine, str)
+
+def test_search_with_parameters(client, mocker):
+    """
+    Test a search query with categories and time_range parameters.
+    """
+    # Arrange
+    query = "python"
+    categories = "news,science"
+    time_range = "week"
+
+    mock_result_set = ResultSet(
+        query=query,
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="AI News Today",
+                url="https://example.com/ai-news",
+                content="Latest news about AI",
+                engine="bing"
+            )
+        ]
+    )
+
+    # Mock the search method and capture arguments
+    mock_search = mocker.patch(
+        "src.services.searxng_service.SearxngService.search",
+        return_value=mock_result_set
+    )
+
+    # Act
+    response = client.get(
+        "/search",
+        params={
+            "q": query,
+            "categories": categories,
+            "time_range": time_range
+        }
+    )
+
+    # Assert
+    assert response.status_code == 200
+
+    # Verify the service was called with the correct parameters
+    mock_search.assert_called_once_with(
+        q=query,
+        categories=categories,
+        time_range=time_range
+    )
+
+    data = response.json()
+    assert data["query"] == query
