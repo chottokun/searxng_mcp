@@ -3,6 +3,12 @@ from fastapi.testclient import TestClient
 from src.main import app
 from src.config import settings
 from src.schemas import ResultSet, SearchResult
+from src.services.pii_service import PiiService
+
+@pytest.fixture(autouse=True)
+def reset_pii_service():
+    """テスト実行ごとにPiiServiceのシングルトンインスタンスをリセットします。"""
+    PiiService.reset()
 
 @pytest.fixture
 def client():

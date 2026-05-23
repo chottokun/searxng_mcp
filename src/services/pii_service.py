@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import Optional
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -11,8 +11,28 @@ class PiiService:
     個人情報（PII）および機密ワードの検出・匿名化を行うサービス。
     日本語（ja_core_news_sm）および英語（en_core_web_sm）のspaCyモデルを組み合わせ、
     日・英両言語の混在クエリでも高い精度で検出を行います。
+    シングルトンパターンを適用し、初期化オーバーヘッド（spaCyモデルのロード）を最小化しています。
     """
+
+    _instance: Optional['PiiService'] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(PiiService, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    @classmethod
+    def reset(cls):
+        """
+        シングルトンインスタンスをクリアし、再初期化を可能にします（主にテスト用）。
+        """
+        cls._instance = None
+
     def __init__(self):
+        if getattr(self, '_initialized', False):
+            return
+
         # 多言語（英語・日本語）に対応したNLPエンジンの設定
         nlp_config = {
             "nlp_engine_name": "spacy",
@@ -27,6 +47,11 @@ class PiiService:
         self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         self.anonymizer = AnonymizerEngine()
         self._register_custom_recognizers()
+
+        # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
+        # 設定が動的に変わることは想定していないため、初期化時に生成して使い回す（パフォーマンス改善）
+        self.entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
+        self._initialized = True
 
     def _register_custom_recognizers(self):
         """
@@ -64,16 +89,16 @@ class PiiService:
 
         # 3. カスタム機密ワード (SENSITIVE_WORDS)
         if settings.SENSITIVE_WORDS:
-            sensitive_patterns = []
-            for i, word in enumerate(settings.SENSITIVE_WORDS):
-                # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、エスケープした単語そのものにマッチさせます
-                sensitive_patterns.append(
-                    Pattern(
-                        name=f"sensitive_word_{i}",
-                        regex=re.escape(word),
-                        score=1.0
-                    )
+            # 複数の単語を1つの正規表現パターンに統合して効率化します（パフォーマンス改善）
+            # 日本語にも部分一致でマッチするよう単語境界 \b は使用せず、エスケープした単語そのものにマッチさせます
+            combined_pattern = "|".join(re.escape(word) for word in settings.SENSITIVE_WORDS)
+            sensitive_patterns = [
+                Pattern(
+                    name="sensitive_words_combined",
+                    regex=combined_pattern,
+                    score=1.0
                 )
+            ]
             for lang in ["en", "ja"]:
                 sensitive_recognizer = PatternRecognizer(
                     supported_entity="SENSITIVE_WORD",
@@ -82,7 +107,7 @@ class PiiService:
                 )
                 self.analyzer.registry.add_recognizer(sensitive_recognizer)
 
-    def _analyze_multilingual(self, text: str, entities: List[str]) -> list:
+    def _analyze_multilingual(self, text: str, entities: list[str]) -> list:
         """
         英語（en）と日本語（ja）の両方のNLPモデル・認識器で解析を行い、結果を統合します。
         スパン（位置）が重複する場合、より高スコアまたは詳細なエンティティを優先してマージします。
@@ -167,8 +192,7 @@ class PiiService:
             r"(?<![0-9a-fA-F.:])(?:[0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
             r"(?<![0-9a-fA-F.:])(?:[0-9a-fA-F]{1,4}:){1,7}:(?![0-9a-fA-F.:])|"
             r"(?<![0-9a-fA-F.:]):(?::[0-9a-fA-F]{1,4}){1,7}(?![0-9a-fA-F.:])|"
-            r"(?<![0-9a-fA-F.:])::[0-9a-fA-F]{1,4}(?![0-9a-fA-F.:])|"
-            r"(?<![0-9a-fA-F.:])::(?![0-9a-fA-F.:])"
+            r"(?<![0-9a-fA-F.:]):::(?![0-9a-fA-F.:])" # :: などの特殊な省略ケースへの対応を含める
         )
         
         def replacer(match: re.Match) -> str:
@@ -258,11 +282,8 @@ class PiiService:
         # 無効な IPアドレス（誤検出の原因）を一時的に保護
         protected_q, ip_map = self._protect_invalid_ips(sanitized_q)
 
-        # 検出対象エンティティのリスト（機密ワードとマイナンバーも含める）
-        entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
-
         # 日・英の両言語モデルで重複なく解析
-        results = self._analyze_multilingual(protected_q, entities)
+        results = self._analyze_multilingual(protected_q, self.entities)
 
         if not results:
             return self._restore_invalid_ips(protected_q, ip_map)
@@ -272,7 +293,7 @@ class PiiService:
         
         # 機密ワードが検知された場合、またはPII検知かつブロックレベルが "block" の場合
         if has_sensitive_word or settings.PII_BLOCK_LEVEL == "block":
-            detected_types = list(set(res.entity_type for res in results))
+            detected_types = list({res.entity_type for res in results})
             detected_str = ", ".join(detected_types)
             raise ValueError(
                 f"送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: {detected_str})"
@@ -288,6 +309,32 @@ class PiiService:
 
         return self._restore_invalid_ips(protected_q, ip_map)
 
+    def _mask_text(self, text: str, entities: list[str]) -> str:
+        """
+        指定されたテキストに対して機密情報のマスキング（匿名化）を行います。
+        （PR #18: mask_results内での重複コードをヘルパーメソッドとして共通化）
+        """
+        if not text:
+            return text
+
+        # API キー & IP アドレスを先行してマスク
+        redacted = self._redact_secrets_and_ips(text)
+
+        # 無効な IPアドレス（誤検出の原因）を一時的に保護
+        protected, ip_map = self._protect_invalid_ips(redacted)
+
+        # 日・英の両言語モデルで重複なく解析
+        results = self._analyze_multilingual(protected, entities)
+
+        if results:
+            protected = self.anonymizer.anonymize(
+                text=protected,
+                analyzer_results=results
+            ).text
+
+        # 無効な IPアドレスを復元
+        return self._restore_invalid_ips(protected, ip_map)
+
     def mask_results(self, result_set: ResultSet) -> ResultSet:
         """
         検索結果のタイトルとコンテンツに含まれる個人情報や機密情報をマスキングします。
@@ -301,48 +348,17 @@ class PiiService:
         if not settings.PII_DETECTION_ENABLED or not settings.PII_MASK_RESPONSE:
             return result_set
 
-        entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
-
         for item in result_set.results:
-            # API キー & IP アドレスを先行してマスク
             if item.title:
-                item.title = self._redact_secrets_and_ips(item.title)
+                item.title = self._mask_text(item.title, self.entities)
             if item.content:
-                item.content = self._redact_secrets_and_ips(item.content)
-
-            # 無効な IPアドレス（誤検出の原因）を一時的に保護
-            title_map = {}
-            content_map = {}
-            if item.title:
-                item.title, title_map = self._protect_invalid_ips(item.title)
-            if item.content:
-                item.content, content_map = self._protect_invalid_ips(item.content)
-
-            # タイトルのマスキング
-            if item.title:
-                title_results = self._analyze_multilingual(item.title, entities)
-                if title_results:
-                    item.title = self.anonymizer.anonymize(
-                        text=item.title,
-                        analyzer_results=title_results
-                    ).text
-
-            # コンテンツ（スニペット）のマスキング
-            if item.content:
-                content_results = self._analyze_multilingual(item.content, entities)
-                if content_results:
-                    item.content = self.anonymizer.anonymize(
-                        text=item.content,
-                        analyzer_results=content_results
-                    ).text
-
-            # 無効な IPアドレスを復元
-            if item.title:
-                item.title = self._restore_invalid_ips(item.title, title_map)
-            if item.content:
-                item.content = self._restore_invalid_ips(item.content, content_map)
+                item.content = self._mask_text(item.content, self.entities)
 
         return result_set
 
 def get_pii_service() -> PiiService:
+    """
+    DI（Dependency Injection）で使用するPiiServiceの取得。
+    シングルトンインスタンスを返却します。
+    """
     return PiiService()

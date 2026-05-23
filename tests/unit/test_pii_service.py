@@ -4,6 +4,7 @@ from src.schemas import ResultSet, SearchResult
 
 @pytest.fixture
 def pii_service():
+    PiiService.reset()
     return PiiService()
 
 def test_redact_api_keys_and_secrets(pii_service):
@@ -52,8 +53,9 @@ def test_do_not_redact_invalid_ipv6(pii_service):
     # 5桁以上のヘキサセグメント (無効なIPv6)
     assert pii_service.inspect_query("Connect to 2001:db8888::1") == "Connect to 2001:db8888::1"
 
-def test_mask_results(pii_service):
-    # 検索結果のマスキング検証
+def test_mask_results(pii_service, mocker):
+    # 検索結果のマスキング検証（明示的にTrueに設定）
+    mocker.patch("src.services.pii_service.settings.PII_MASK_RESPONSE", True)
     mock_results = ResultSet(
         query="test",
         number_of_results=1,
@@ -70,3 +72,58 @@ def test_mask_results(pii_service):
     masked = pii_service.mask_results(mock_results)
     assert masked.results[0].title == "My IP is [REDACTED_IP]"
     assert masked.results[0].content == "API Key [REDACTED_KEY] works"
+
+def test_inspect_query_disabled(pii_service, mocker):
+    """PII検出が無効な場合、クエリが変更されないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    query = "Contact john.doe@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_inspect_query_off_level(pii_service, mocker):
+    """PIIブロックレベルが'off'の場合、クエリが変更されないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", True)
+    mocker.patch("src.services.pii_service.settings.PII_BLOCK_LEVEL", "off")
+    query = "Contact john.doe@example.com"
+    assert pii_service.inspect_query(query) == query
+
+def test_mask_results_disabled(pii_service, mocker):
+    """PII検出が無効な場合、検索結果がマスキングされないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My email is john.doe@example.com",
+                url="http://example.com",
+                content="Call me at 090-1234-5678",
+                engine="google"
+            )
+        ]
+    )
+
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My email is john.doe@example.com"
+    assert masked.results[0].content == "Call me at 090-1234-5678"
+
+def test_mask_results_off_masking(pii_service, mocker):
+    """レスポンスのマスキングが設定でオフの場合、検索結果がマスキングされないことを検証します。"""
+    mocker.patch("src.services.pii_service.settings.PII_DETECTION_ENABLED", True)
+    mocker.patch("src.services.pii_service.settings.PII_MASK_RESPONSE", False)
+    mock_results = ResultSet(
+        query="test",
+        number_of_results=1,
+        results=[
+            SearchResult(
+                title="My email is john.doe@example.com",
+                url="http://example.com",
+                content="Call me at 090-1234-5678",
+                engine="google"
+            )
+        ]
+    )
+
+    masked = pii_service.mask_results(mock_results)
+    assert masked.results[0].title == "My email is john.doe@example.com"
+    assert masked.results[0].content == "Call me at 090-1234-5678"
+
