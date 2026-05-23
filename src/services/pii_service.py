@@ -288,6 +288,38 @@ class PiiService:
 
         return self._restore_invalid_ips(protected_q, ip_map)
 
+    def _mask_text(self, text: str, entities: List[str]) -> str:
+        """
+        指定されたテキストに対して機密情報のマスキング（匿名化）を行います。
+
+        Args:
+            text: マスキング対象のテキスト
+            entities: 検出対象のエンティティリスト
+
+        Returns:
+            マスキング済みのテキスト
+        """
+        if not text:
+            return text
+
+        # API キー & IP アドレスを先行してマスク
+        redacted = self._redact_secrets_and_ips(text)
+
+        # 無効な IPアドレス（誤検出の原因）を一時的に保護
+        protected, ip_map = self._protect_invalid_ips(redacted)
+
+        # 日・英の両言語モデルで重複なく解析
+        results = self._analyze_multilingual(protected, entities)
+
+        if results:
+            protected = self.anonymizer.anonymize(
+                text=protected,
+                analyzer_results=results
+            ).text
+
+        # 無効な IPアドレスを復元
+        return self._restore_invalid_ips(protected, ip_map)
+
     def mask_results(self, result_set: ResultSet) -> ResultSet:
         """
         検索結果のタイトルとコンテンツに含まれる個人情報や機密情報をマスキングします。
@@ -304,43 +336,10 @@ class PiiService:
         entities = settings.PII_ENTITIES + ["SENSITIVE_WORD", "MY_NUMBER"]
 
         for item in result_set.results:
-            # API キー & IP アドレスを先行してマスク
             if item.title:
-                item.title = self._redact_secrets_and_ips(item.title)
+                item.title = self._mask_text(item.title, entities)
             if item.content:
-                item.content = self._redact_secrets_and_ips(item.content)
-
-            # 無効な IPアドレス（誤検出の原因）を一時的に保護
-            title_map = {}
-            content_map = {}
-            if item.title:
-                item.title, title_map = self._protect_invalid_ips(item.title)
-            if item.content:
-                item.content, content_map = self._protect_invalid_ips(item.content)
-
-            # タイトルのマスキング
-            if item.title:
-                title_results = self._analyze_multilingual(item.title, entities)
-                if title_results:
-                    item.title = self.anonymizer.anonymize(
-                        text=item.title,
-                        analyzer_results=title_results
-                    ).text
-
-            # コンテンツ（スニペット）のマスキング
-            if item.content:
-                content_results = self._analyze_multilingual(item.content, entities)
-                if content_results:
-                    item.content = self.anonymizer.anonymize(
-                        text=item.content,
-                        analyzer_results=content_results
-                    ).text
-
-            # 無効な IPアドレスを復元
-            if item.title:
-                item.title = self._restore_invalid_ips(item.title, title_map)
-            if item.content:
-                item.content = self._restore_invalid_ips(item.content, content_map)
+                item.content = self._mask_text(item.content, entities)
 
         return result_set
 
