@@ -206,6 +206,45 @@ curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
 }
 ```
 
+#### 4. オプション設定ごとの動作例
+
+設定オプション（環境変数 `PII_BLOCK_LEVEL` や `PII_MASK_RESPONSE`）の変更により、データガードレールの挙動をカスタマイズできます。以下はその動作結果の例です。
+
+##### A. ブロックモード (`PII_BLOCK_LEVEL="block"` - 初期値)
+クエリ内に個人情報が検出された場合、検索処理自体を拒否してエラーを返却します。安全性を最優先する環境に適しています。
+* **入力クエリ:** `Find sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM` (OpenAIのAPIキーを含む)
+* **レスポンス (400 Bad Request):**
+  ```json
+  {
+    "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: API_KEY)"
+  }
+  ```
+
+##### B. 匿名化モード (`PII_BLOCK_LEVEL="anonymize"`)
+クエリ内の個人情報をプレースホルダー（タグ）に自動置換した上で、検索を安全に続行します。利便性と安全性のバランスを取る場合に適しています。
+* **入力クエリ:** `Contact john.doe@example.com`
+* **SearXNGへ送信されるクエリ (匿名化後):** `Contact [EMAIL_ADDRESS]`
+* **動作結果:** 個人情報が隠されたクエリが安全に SearXNG へ送信され、通常の検索結果が返却されます。
+
+##### C. 検索結果のマスキング無効化 (`PII_MASK_RESPONSE=False`)
+検索結果に含まれる個人情報のマスキング（`<PERSON>` 等への変換）を行わず、元データのままAIエージェントに渡します。
+* **検索クエリ:** `python`
+* **レスポンス (マスキング無効状態):**
+  ```json
+  {
+    "query": "python",
+    "results": [
+      {
+        "title": "Python",
+        "url": "https://en.wikipedia.org/wiki/Python",
+        "content": "Guido van Rossum began working on Python in...", // ← マスキングされず、本名がそのまま出力されます
+        "engine": "wikipedia"
+      }
+    ]
+  }
+  ```
+
+
 
 ---
 
@@ -360,4 +399,42 @@ curl -s "http://127.0.0.1:8000/search?q=my%20email%20is%20test@example.com"
   "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: EMAIL_ADDRESS)"
 }
 ```
+
+#### 4. Examples by Configuration Options
+
+You can customize the guardrail behavior by changing environment variables or `.env` configuration (e.g., `PII_BLOCK_LEVEL` or `PII_MASK_RESPONSE`). Below are output examples under each option.
+
+##### A. Block Mode (`PII_BLOCK_LEVEL="block"` - Default)
+Rejects the search processing and returns an error if PII is detected in a query. Ideal for high-security environments.
+* **Input Query:** `Find sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLM` (Contains an OpenAI API Key)
+* **Response (400 Bad Request):**
+  ```json
+  {
+    "detail": "送信不可能な個人情報または機密ワードがクエリ内に検出されたため、検索をブロックしました。(検出タイプ: API_KEY)"
+  }
+  ```
+
+##### B. Anonymization Mode (`PII_BLOCK_LEVEL="anonymize"`)
+Automatically replaces private data with placeholder tags and safely proceeds with the search. Ideal for balancing utility and security.
+* **Input Query:** `Contact john.doe@example.com`
+* **Anonymized Query Sent to SearXNG:** `Contact [EMAIL_ADDRESS]`
+* **Behavior:** The query is dispatched to SearXNG safely, and normal results are returned.
+
+##### C. Response Masking Disabled (`PII_MASK_RESPONSE=False`)
+Passes raw search results containing sensitive entities straight to the AI agent without converting them to `<PERSON>` or other tags.
+* **Search Query:** `python`
+* **Response (Masking Disabled):**
+  ```json
+  {
+    "query": "python",
+    "results": [
+      {
+        "title": "Python",
+        "url": "https://en.wikipedia.org/wiki/Python",
+        "content": "Guido van Rossum began working on Python in...", // ← Developer's real name is preserved
+        "engine": "wikipedia"
+      }
+    ]
+  }
+  ```
 
